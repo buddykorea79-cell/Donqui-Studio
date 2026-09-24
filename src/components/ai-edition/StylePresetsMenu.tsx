@@ -402,9 +402,12 @@ export function StylePresetsMenu() {
 					className={topbarStyles.ghostBtn}
 					aria-expanded={open}
 					disabled={!hasDocument}
+					// The label is dropped in a narrow bar; the name has to survive it.
+					aria-label={ts("stylePresets.button")}
+					title={ts("stylePresets.button")}
 				>
 					<SwatchBook size={15} />
-					{ts("stylePresets.button")}
+					<span className={topbarStyles.presetsLabel}>{ts("stylePresets.button")}</span>
 				</button>
 			</PopoverTrigger>
 			<PopoverContent

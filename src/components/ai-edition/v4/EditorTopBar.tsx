@@ -21,7 +21,7 @@ import { getAvailableLocales, getLocaleName, getLocaleShort } from "@/i18n/loade
 import { StylePresetsMenu } from "../StylePresetsMenu";
 import styles from "./EditorShellV4.module.css";
 
-export type EditorMode = "audio" | "media" | "edit" | "rec";
+export type EditorMode = "audio" | "vclip" | "media" | "edit" | "rec";
 
 export interface TopBarActions {
 	openProject: () => void;
@@ -46,11 +46,13 @@ interface EditorTopBarProps {
 	actions: TopBarActions;
 }
 
-const MODES: Array<{ id: EditorMode; labelKey: string }> = [
-	{ id: "audio", labelKey: "Audio" },
-	{ id: "media", labelKey: "topbar.modes.media" },
-	{ id: "edit", labelKey: "topbar.modes.edit" },
-	{ id: "rec", labelKey: "topbar.modes.rec" },
+/** Donqui's own steps keep their names in every locale; the inherited ones are translated. */
+const MODES: Array<{ id: EditorMode; label: string; translate: boolean }> = [
+	{ id: "audio", label: "Audio", translate: false },
+	{ id: "vclip", label: "V.Clip", translate: false },
+	{ id: "media", label: "topbar.modes.media", translate: true },
+	{ id: "edit", label: "topbar.modes.edit", translate: true },
+	{ id: "rec", label: "topbar.modes.rec", translate: true },
 ];
 
 export function EditorTopBar({
@@ -158,21 +160,24 @@ export function EditorTopBar({
 			</span>
 
 			<div className={styles.modeSwitch} role="tablist" aria-label={t("topbar.editorMode")}>
-				{MODES.map((m) => (
-					<button
-						key={m.id}
-						type="button"
-						role="tab"
-						aria-selected={mode === m.id}
-						title={t(m.labelKey)}
-						// Feeds the hidden bold copy that reserves the selected width — see
-						// .modeSwitch button::before.
-						data-label={m.id === "audio" ? "Audio" : t(m.labelKey)}
-						onClick={() => onModeChange(m.id)}
-					>
-						<span className={styles.modeLabel}>{m.id === "audio" ? "Audio" : t(m.labelKey)}</span>
-					</button>
-				))}
+				{MODES.map((m) => {
+					const label = m.translate ? t(m.label) : m.label;
+					return (
+						<button
+							key={m.id}
+							type="button"
+							role="tab"
+							aria-selected={mode === m.id}
+							title={label}
+							// Feeds the hidden bold copy that reserves the selected width — see
+							// .modeSwitch button::before.
+							data-label={label}
+							onClick={() => onModeChange(m.id)}
+						>
+							<span className={styles.modeLabel}>{label}</span>
+						</button>
+					);
+				})}
 			</div>
 
 			{/* A preset is the whole look the right panel's panes edit — Composition, camera,

@@ -1,4 +1,4 @@
-import { ArrowDown, Film, Plus, RotateCw, Search, X } from "lucide-react";
+import { ArrowDown, Film, Plus, RotateCw, ScanSearch, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
@@ -25,7 +25,6 @@ import {
 	useTranscriptionLabel,
 } from "../TranscriptionStatus";
 import styles from "./EditorShellV4.module.css";
-import { MediaClipBuilder } from "./MediaClipBuilder";
 
 const ASSET_MIME = "application/x-axcut-asset";
 const THUMB_GRADIENTS = [
@@ -51,8 +50,11 @@ export async function addSelectedAssetToTimeline(
 
 export function MediaStage({
 	onAddToTimeline,
+	onOpenInVClip,
 }: {
 	onAddToTimeline: (assetId: string) => Promise<void>;
+	/** Clips are cut in V.Clip; this opens it on the selected source. */
+	onOpenInVClip: (assetId: string) => void;
 }) {
 	const t = useScopedT("editor");
 	const { locale } = useI18n();
@@ -273,8 +275,8 @@ export function MediaStage({
 								<Plus size={14} /> 사진 추가
 							</button>
 							<p className={styles.mediaHint}>
-								소스를 선택해 구간·Remotion 효과를 정하고 미리보기로 확인하세요. Audio를 넣었다면
-								남은 길이에 맞춰 클립을 만들 수 있습니다.
+								긴 영상은 V.Clip에서 구간으로 나누고 Remotion 효과를 입혀 클립으로 만드세요. Audio를
+								넣었다면 남은 길이에 맞춰 구간을 고를 수 있습니다.
 							</p>
 						</div>
 					</div>
@@ -299,7 +301,7 @@ export function MediaStage({
 										letterSpacing: "-0.01em",
 									}}
 								>
-									클립 · 효과 · 미리보기
+									{t("mediaStage.sourceTranscript")}
 								</h2>
 								<button
 									type="button"
@@ -334,11 +336,29 @@ export function MediaStage({
 							>
 								{selected.label || basename(selected.originalPath)}
 							</div>
-							<MediaClipBuilder
-								key={`${projectId}:${selected.id}`}
-								asset={selected}
-								onAddToTimeline={onAddToTimeline}
-							/>
+							<button
+								type="button"
+								onClick={() => onOpenInVClip(selected.id)}
+								style={{
+									width: "100%",
+									height: 36,
+									display: "inline-flex",
+									alignItems: "center",
+									justifyContent: "center",
+									gap: 7,
+									marginBottom: 8,
+									borderRadius: 9,
+									border: "1px solid var(--border)",
+									background: "var(--surface-2)",
+									color: "var(--fg)",
+									fontSize: 12.5,
+									fontWeight: 600,
+									cursor: "pointer",
+								}}
+							>
+								<ScanSearch size={14} />
+								V.Clip에서 구간 나누기
+							</button>
 							<button
 								type="button"
 								onClick={addSelectedToTimeline}

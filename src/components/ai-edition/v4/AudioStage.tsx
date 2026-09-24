@@ -103,7 +103,7 @@ export function AudioStage({
 					<div>
 						<h1>Audio</h1>
 						<p className={styles.hint}>
-							음악이나 나레이션을 먼저 배치하고, Media에서 영상과 사진 클립을 길이에 맞춰 보세요.
+							음악이나 나레이션을 먼저 배치하고, V.Clip에서 영상을 구간으로 나눠 길이에 맞춰 보세요.
 							<br />
 							오디오 없이 바로 시작해도 됩니다.
 						</p>
@@ -113,7 +113,7 @@ export function AudioStage({
 						className={`${styles.button} ${styles.primary}`}
 						onClick={onContinue}
 					>
-						Media로 이동 <ArrowRight size={15} />
+						V.Clip으로 이동 <ArrowRight size={15} />
 					</button>
 				</header>
 				<div className={styles.actions}>

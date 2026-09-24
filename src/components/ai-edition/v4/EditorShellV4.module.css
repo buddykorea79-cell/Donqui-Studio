@@ -366,13 +366,13 @@
 	white-space: nowrap;
 }
 
-/* Content-sized columns keep all four mode labels visible without charging
+/* Content-sized columns keep all five mode labels visible without charging
    every tab for the longest translation (for example French "Enregistrement").
    Each button reserves its bold label below, so selecting a tab stays stable. */
 .modeSwitch {
 	margin: 0 auto;
 	display: inline-grid;
-	grid-template-columns: repeat(4, max-content);
+	grid-template-columns: repeat(5, max-content);
 	align-items: center;
 	gap: 2px;
 	padding: 3px;
@@ -499,6 +499,20 @@
 	}
 }
 
+/* Five mode tabs in the longer locales (French, Russian, Czech, Spanish) leave no room for the
+   labelled Export and Presets buttons: below these widths they keep only their icons (and their
+   names, as tooltips) rather than slide under the window controls. */
+@media (max-width: 1200px) {
+	.exportLabel {
+		display: none;
+	}
+	.exportBtn {
+		padding: 0;
+		width: var(--topbar-icon);
+		justify-content: center;
+	}
+}
+
 @media (max-width: 1080px) {
 	.topbar {
 		--topbar-gap: 5px;
@@ -521,11 +535,6 @@
 		font-size: 11px;
 		max-width: none;
 	}
-	.exportBtn {
-		padding: 0 10px;
-		gap: 5px;
-		font-size: 12px;
-	}
 }
 
 @media (max-width: 960px) {
@@ -547,6 +556,9 @@
 		width: auto;
 		font-size: 11px;
 	}
+	.presetsLabel {
+		display: none;
+	}
 	.modeSwitch button {
 		padding-inline: 4px;
 	}
@@ -567,14 +579,6 @@
 		padding-inline: 5px;
 		gap: 4px;
 		font-size: 11px;
-	}
-	.exportLabel {
-		display: none;
-	}
-	.exportBtn {
-		padding: 0;
-		width: var(--topbar-icon);
-		justify-content: center;
 	}
 	.langBtn {
 		padding: 0 4px;

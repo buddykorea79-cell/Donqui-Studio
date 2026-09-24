@@ -300,6 +300,14 @@ interface Window {
 		createClipEffect?: (
 			request: import("../src/lib/clip-effects/catalog").CreateClipEffectRequest,
 		) => Promise<import("../src/lib/clip-effects/catalog").CreateClipEffectResult>;
+		vclipListModels?: () => Promise<import("../src/lib/vclip/contract").VClipModelList>;
+		vclipProbe?: (
+			sourcePath: string,
+		) => Promise<import("../src/lib/vclip/contract").VClipProbeResult>;
+		vclipAnalyzeWindow?: (
+			request: import("../src/lib/vclip/contract").VClipWindowRequest,
+		) => Promise<import("../src/lib/vclip/contract").VClipWindowResult>;
+		vclipCancel?: (jobId: string) => Promise<void>;
 		openVideoFilePicker: () => Promise<{
 			success: boolean;
 			path?: string;

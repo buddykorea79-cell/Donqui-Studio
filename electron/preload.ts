@@ -283,6 +283,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openImageClipPicker: (duration: number) => ipcRenderer.invoke("open-image-clip-picker", duration),
 	createClipEffect: (request: import("../src/lib/clip-effects/catalog").CreateClipEffectRequest) =>
 		ipcRenderer.invoke("create-clip-effect", request),
+	vclipListModels: () => ipcRenderer.invoke("vclip-list-models"),
+	vclipProbe: (sourcePath: string) => ipcRenderer.invoke("vclip-probe", sourcePath),
+	vclipAnalyzeWindow: (request: import("../src/lib/vclip/contract").VClipWindowRequest) =>
+		ipcRenderer.invoke("vclip-analyze-window", request),
+	vclipCancel: (jobId: string) => ipcRenderer.invoke("vclip-cancel", jobId),
 	openVideoFilePicker: () => {
 		return ipcRenderer.invoke("open-video-file-picker");
 	},

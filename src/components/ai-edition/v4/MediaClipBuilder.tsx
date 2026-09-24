@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { toFileUrl } from "@/components/video-editor/projectPersistence";
 import type { AxcutAsset } from "@/lib/ai-edition/schema";
-import { enqueueDocumentWrite } from "@/lib/ai-edition/store/documentWriteQueue";
 import { useProjectStore } from "@/lib/ai-edition/store/projectStore";
-import { currentWriteEpoch } from "@/lib/ai-edition/store/undoStack";
 import { probeVideoDimensions, probeVideoDuration } from "@/lib/ai-edition/timeline/duration";
+import { addEffectClip } from "@/lib/clip-effects/addEffectClip";
 import { audioFitSummary, fitClipEndMs } from "@/lib/clip-effects/audioFit";
 import {
 	CLIP_EFFECTS,
@@ -16,20 +15,31 @@ import {
 import { ClipPreview } from "./ClipPreview";
 import styles from "./MediaClipBuilder.module.css";
 
+export interface ClipSourceMetadata {
+	durationMs: number;
+	width: number;
+	height: number;
+}
+
 export function MediaClipBuilder({
 	asset,
 	onAddToTimeline,
+	initialRange,
+	knownMetadata,
 }: {
 	asset: AxcutAsset;
 	onAddToTimeline: (assetId: string) => Promise<void>;
+	/** The range to start from, e.g. a V.Clip segment being fine-tuned. Whole source otherwise. */
+	initialRange?: { startMs: number; endMs: number };
+	/**
+	 * Length and size already read with FFmpeg. Skips the browser probe, which cannot open
+	 * every camera format (4K HEVC drone footage among them).
+	 */
+	knownMetadata?: ClipSourceMetadata;
 }) {
 	const document = useProjectStore((state) => state.document);
 	const projectId = useProjectStore((state) => state.projectId);
-	const [metadata, setMetadata] = useState<{
-		durationMs: number;
-		width: number;
-		height: number;
-	} | null>(null);
+	const [metadata, setMetadata] = useState<ClipSourceMetadata | null>(null);
 	const [error, setError] = useState("");
 	const [startMs, setStartMs] = useState(0);
 	const [endMs, setEndMs] = useState(0);
@@ -52,23 +62,33 @@ export function MediaClipBuilder({
 		endMs - startMs >= 100 &&
 		endMs - startMs <= 600_000;
 
+	// Read once per source: a new range or metadata object from the parent re-renders this
+	// builder but must not reset what the user has typed since.
+	const initial = useRef({ initialRange, knownMetadata });
 	useEffect(() => {
 		mounted.current = true;
 		let active = true;
-		void Promise.all([probeVideoDuration(sourceUrl), probeVideoDimensions(sourceUrl)])
-			.then(([duration, dimensions]) => {
-				if (!active) return;
-				if (!duration || !dimensions) {
-					setError("소스 정보를 읽을 수 없습니다. 원본 파일 위치를 확인해 주세요.");
-					return;
-				}
-				const durationMs = Math.round(duration * 1000);
-				setMetadata({ durationMs, ...dimensions });
-				setEndMs(durationMs);
-			})
-			.catch((reason: unknown) => {
-				if (active) setError(reason instanceof Error ? reason.message : String(reason));
-			});
+		const apply = (source: ClipSourceMetadata) => {
+			const range = initial.current.initialRange;
+			setMetadata(source);
+			setStartMs(Math.min(Math.max(0, range?.startMs ?? 0), source.durationMs));
+			setEndMs(Math.min(range?.endMs ?? source.durationMs, source.durationMs));
+		};
+		const known = initial.current.knownMetadata;
+		if (known) apply(known);
+		else
+			void Promise.all([probeVideoDuration(sourceUrl), probeVideoDimensions(sourceUrl)])
+				.then(([duration, dimensions]) => {
+					if (!active) return;
+					if (!duration || !dimensions) {
+						setError("소스 정보를 읽을 수 없습니다. 원본 파일 위치를 확인해 주세요.");
+						return;
+					}
+					apply({ durationMs: Math.round(duration * 1000), ...dimensions });
+				})
+				.catch((reason: unknown) => {
+					if (active) setError(reason instanceof Error ? reason.message : String(reason));
+				});
 		return () => {
 			active = false;
 			mounted.current = false;
@@ -78,62 +98,20 @@ export function MediaClipBuilder({
 	async function createClip() {
 		if (!metadata || !validRange || !projectId || busyRef.current) return;
 		busyRef.current = true;
-		const epoch = currentWriteEpoch();
-		const superseded = () =>
-			useProjectStore.getState().projectId !== projectId || currentWriteEpoch() !== epoch;
 		setBusy(true);
 		setError("");
 		try {
-			const create = window.electronAPI?.createClipEffect;
-			if (!create)
-				throw new Error("클립 만들기는 Donqui Studio 데스크톱 앱에서 사용할 수 있습니다.");
-			const result = await create({
+			const createdId = await addEffectClip({
 				sourcePath: asset.originalPath,
 				startMs,
 				endMs,
 				effect,
 				width: metadata.width,
 				height: metadata.height,
+				label: `${asset.label} · ${(startMs / 1000).toFixed(1)}–${(endMs / 1000).toFixed(1)}초 · ${effectLabel}`,
 			});
-			if (!result.success || !result.filePath)
-				throw new Error(result.error || "클립을 만들지 못했습니다.");
-			if (superseded()) return;
-			const created = await useProjectStore
-				.getState()
-				.addAsset(
-					result.filePath,
-					`${asset.label} · ${(startMs / 1000).toFixed(1)}–${(endMs / 1000).toFixed(1)}초 · ${effectLabel}`,
-				);
-			if (!created) throw new Error("만든 클립을 프로젝트에 저장하지 못했습니다.");
-			if (superseded()) return;
-			const saved = await enqueueDocumentWrite(async () => {
-				if (superseded()) return false;
-				const state = useProjectStore.getState();
-				if (!state.document?.assets.some((item) => item.id === created.id)) return true;
-				return state.saveDocument(
-					{
-						...state.document,
-						assets: state.document.assets.map((item) =>
-							item.id === created.id
-								? {
-										...item,
-										durationSec: (result.durationMs ?? endMs - startMs) / 1000,
-										video: {
-											codec: "h264",
-											fps: 30,
-											width: result.width ?? metadata.width,
-											height: result.height ?? metadata.height,
-										},
-									}
-								: item,
-						),
-					},
-					{ history: false },
-				);
-			});
-			if (superseded()) return;
-			if (!saved) throw new Error("클립 길이를 저장하지 못했습니다.");
-			await onAddToTimeline(created.id);
+			if (!createdId) return;
+			await onAddToTimeline(createdId);
 			toast.success("효과를 적용한 클립을 타임라인에 추가했습니다.");
 		} catch (reason) {
 			if (mounted.current) setError(reason instanceof Error ? reason.message : String(reason));

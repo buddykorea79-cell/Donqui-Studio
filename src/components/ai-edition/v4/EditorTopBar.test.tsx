@@ -58,16 +58,19 @@ function renderTopBar(projectTitle: string | null) {
 	};
 }
 
-it("offers the optional Audio tab before Media", () => {
+it("offers the optional Audio tab, then V.Clip, before Media", () => {
 	const { onModeChange } = renderTopBar("Audio first");
 	expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
 		"Audio",
+		"V.Clip",
 		"topbar.modes.media",
 		"topbar.modes.edit",
 		"topbar.modes.rec",
 	]);
 	fireEvent.click(screen.getByRole("tab", { name: "Audio" }));
 	expect(onModeChange).toHaveBeenCalledWith("audio");
+	fireEvent.click(screen.getByRole("tab", { name: "V.Clip" }));
+	expect(onModeChange).toHaveBeenCalledWith("vclip");
 });
 
 /** The menu reads two separate channels, and they answer different questions: `getAppInfo` for
@@ -269,11 +272,12 @@ describe("EditorTopBar responsive affordances and tooltips", () => {
 	it("provides title tooltips for mode switch tabs", () => {
 		renderTopBar("Demo Project");
 		const tabs = screen.getAllByRole("tab");
-		expect(tabs).toHaveLength(4);
+		expect(tabs).toHaveLength(5);
 		expect(tabs[0]).toHaveAttribute("title", "Audio");
-		expect(tabs[1]).toHaveAttribute("title", "topbar.modes.media");
-		expect(tabs[2]).toHaveAttribute("title", "topbar.modes.edit");
-		expect(tabs[3]).toHaveAttribute("title", "topbar.modes.rec");
+		expect(tabs[1]).toHaveAttribute("title", "V.Clip");
+		expect(tabs[2]).toHaveAttribute("title", "topbar.modes.media");
+		expect(tabs[3]).toHaveAttribute("title", "topbar.modes.edit");
+		expect(tabs[4]).toHaveAttribute("title", "topbar.modes.rec");
 	});
 
 	it("provides title tooltips on the saved status indicator", () => {

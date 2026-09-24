@@ -96,11 +96,11 @@ afterEach(() => {
 });
 
 describe("AudioStage", () => {
-	it("lets an empty project continue directly to Media", () => {
+	it("lets an empty project continue directly to V.Clip", () => {
 		const onContinue = vi.fn();
 		render(<AudioStage onContinue={onContinue} onNewProject={vi.fn()} />);
 		expect(screen.getByRole("button", { name: "음악 가져오기" })).toBeDisabled();
-		fireEvent.click(screen.getByRole("button", { name: /Media로 이동/ }));
+		fireEvent.click(screen.getByRole("button", { name: /V\.Clip으로 이동/ }));
 		expect(onContinue).toHaveBeenCalledOnce();
 	});
 

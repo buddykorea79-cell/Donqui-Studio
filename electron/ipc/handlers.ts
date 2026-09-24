@@ -36,6 +36,7 @@ import {
 	type RecordingSession,
 	type StoreRecordedSessionInput,
 } from "../../src/lib/recordingSession";
+import type { VClipWindowRequest } from "../../src/lib/vclip/contract";
 import type {
 	CursorRecordingData,
 	CursorRecordingSample,
@@ -72,7 +73,9 @@ import {
 } from "../media/cursorSidecar";
 import { createImageClip, IMAGE_EXTENSIONS } from "../media/imageClip";
 import { findMediaLinksByFingerprint, registerMediaLinks } from "../media/mediaLinksRegistry";
+import { listVisionModels, resolveOllamaBaseUrl } from "../media/ollamaVision";
 import { relinkProjectMedia } from "../media/projectMediaRelinker";
+import { analyzeWindow, probeVideo } from "../media/vclipAnalysis";
 import {
 	type LinuxCaptureSourceKind,
 	LinuxNativeCaptureSession,
@@ -171,6 +174,8 @@ function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise
 
 // Paths the user approved via file picker or project load (i.e. outside the default dirs).
 const approvedPaths = new Set<string>();
+/** In-flight V.Clip window analyses by job, so one cancel stops ffmpeg and Ollama alike. */
+const vclipJobs = new Map<string, Set<AbortController>>();
 
 function approveFilePath(filePath: string): void {
 	approvedPaths.add(path.resolve(filePath));
@@ -3955,6 +3960,71 @@ export function registerIpcHandlers(
 			}
 		},
 	);
+	// V.Clip: split an imported video into scored segments (AutoVeo's Ollama clip step).
+	// The renderer drives one window per call; a job id lets it cancel the run in flight.
+	ipcMain.handle("vclip-list-models", () => listVisionModels(resolveOllamaBaseUrl()));
+	ipcMain.handle("vclip-probe", async (_event, sourcePath: string) => {
+		try {
+			const approved = resolveApprovedVideoPath(sourcePath);
+			if (!approved) throw new Error("Choose an imported video first");
+			return { success: true, ...(await probeVideo(approved)) };
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) };
+		}
+	});
+	ipcMain.handle("vclip-analyze-window", async (_event, request: VClipWindowRequest) => {
+		const controller = new AbortController();
+		const jobId = typeof request?.jobId === "string" ? request.jobId.slice(0, 100) : "";
+		const jobControllers = vclipJobs.get(jobId) ?? new Set<AbortController>();
+		try {
+			const sourcePath = request && resolveApprovedVideoPath(request.sourcePath);
+			if (!sourcePath) throw new Error("Choose an imported video first");
+			const { startSec, endSec } = request;
+			if (
+				!jobId ||
+				!Number.isFinite(startSec) ||
+				!Number.isFinite(endSec) ||
+				startSec < 0 ||
+				endSec - startSec < 0.5 ||
+				endSec - startSec > 60
+			)
+				throw new Error("Choose a segment between 0.5 and 60 seconds");
+			const model =
+				typeof request.model === "string" && request.model.trim()
+					? request.model.trim().slice(0, 200)
+					: null;
+			jobControllers.add(controller);
+			vclipJobs.set(jobId, jobControllers);
+			const result = await analyzeWindow(
+				{
+					jobId,
+					sourcePath,
+					startSec,
+					endSec,
+					model,
+					title: typeof request.title === "string" ? request.title : path.basename(sourcePath),
+				},
+				{
+					cacheDir: path.join(app.getPath("userData"), "media", "vclip-analysis"),
+					ollamaBaseUrl: resolveOllamaBaseUrl(),
+					signal: controller.signal,
+				},
+			);
+			return { success: true, result };
+		} catch (error) {
+			return {
+				success: false,
+				canceled: controller.signal.aborted,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		} finally {
+			jobControllers.delete(controller);
+			if (jobControllers.size === 0) vclipJobs.delete(jobId);
+		}
+	});
+	ipcMain.handle("vclip-cancel", (_event, jobId: string) => {
+		for (const controller of vclipJobs.get(jobId) ?? []) controller.abort();
+	});
 	ipcMain.handle("open-image-clip-picker", async (_event, duration: number) => {
 		try {
 			if (!Number.isFinite(duration) || duration < 0.5 || duration > 600)

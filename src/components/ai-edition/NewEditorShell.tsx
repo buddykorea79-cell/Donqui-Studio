@@ -56,6 +56,7 @@ import {
 } from "@/lib/ai-edition/timeline/trim-mapping";
 import { firstTimelineBusyView } from "@/lib/ai-edition/transcription/status";
 import { matchesShortcut } from "@/lib/shortcuts";
+import { useVClipStore } from "@/lib/vclip/store";
 import { nativeBridgeClient } from "@/native";
 import type { AiEditionProjectSummary } from "@/native/contracts";
 import { resolveVisibleClips } from "@/native/sceneDescription";
@@ -81,6 +82,7 @@ import { type Facet, FloatingInspector } from "./v4/FloatingInspector";
 import { MediaStage } from "./v4/MediaStage";
 import { RecStage } from "./v4/RecStage";
 import { V4Timeline } from "./v4/V4Timeline";
+import { VClipStage } from "./v4/VClipStage";
 
 interface SeekTarget {
 	timeSec: number;
@@ -1513,7 +1515,9 @@ export function NewEditorShell() {
 		setMode(next);
 	};
 	const showTimeline = mode !== "rec" && mode !== "audio";
-	const timelineRow = mode === "media" ? "188px" : `${timelineHeightPx}px`;
+	// Media and V.Clip add clips rather than edit them: a short strip shows them landing.
+	const compactTimeline = mode === "media" || mode === "vclip";
+	const timelineRow = compactTimeline ? "188px" : `${timelineHeightPx}px`;
 	const bodyColumns = mode === "edit" && chatOpen ? `${chatWidthPx}px 1fr` : "1fr";
 
 	// Drag the chat/stage divider (col-resize) or the timeline's top edge
@@ -1735,12 +1739,20 @@ export function NewEditorShell() {
 					) : mode === "audio" ? (
 						<AudioStage
 							onContinue={() => {
-								changeMode("media");
+								changeMode("vclip");
 							}}
 							onNewProject={() => setNewProjectOpen(true)}
 						/>
+					) : mode === "vclip" ? (
+						<VClipStage onAddToTimeline={handleDropAsset} onContinue={() => changeMode("media")} />
 					) : mode === "media" ? (
-						<MediaStage onAddToTimeline={handleDropAsset} />
+						<MediaStage
+							onAddToTimeline={handleDropAsset}
+							onOpenInVClip={(assetId) => {
+								useVClipStore.getState().selectSource(assetId);
+								changeMode("vclip");
+							}}
+						/>
 					) : (
 						<RecStage
 							onStartRecording={() => void handleNewRecording()}
@@ -1761,7 +1773,7 @@ export function NewEditorShell() {
 						borderTop: "1px solid var(--border)",
 					}}
 				>
-					{mode !== "media" ? (
+					{!compactTimeline ? (
 						<div
 							className={v4.timelineResizeHandle}
 							role="separator"
@@ -1773,7 +1785,7 @@ export function NewEditorShell() {
 					<V4Timeline
 						tl={tl}
 						setCurrentTime={handleSeek}
-						variant={mode === "media" ? "media" : "edit"}
+						variant={compactTimeline ? "media" : "edit"}
 						onDropAsset={handleDropAsset}
 						videoSources={videoSources}
 						playing={playing}

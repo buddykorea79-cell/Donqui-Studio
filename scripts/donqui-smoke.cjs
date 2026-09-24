@@ -124,6 +124,9 @@ async function launch() {
 		await page.getByRole("tab", { name: /^(미디어|Media)$/ }).click();
 		await page.getByLabel("사진 클립 길이 (초)", { exact: true }).fill("1.5");
 		await page.getByRole("button", { name: "사진 추가", exact: true }).click();
+		// Clips are cut in V.Clip; Media hands the selected source over.
+		await page.getByRole("button", { name: "V.Clip에서 구간 나누기", exact: true }).click();
+		await page.getByRole("tab", { name: /직접 자르기/ }).click();
 		await page.getByRole("button", { name: "클립 미리보기", exact: true }).waitFor();
 		await page.getByLabel("Remotion 효과", { exact: true }).selectOption("random");
 		await page.getByRole("button", { name: "클립 미리보기", exact: true }).click();
@@ -142,7 +145,10 @@ async function launch() {
 		);
 		await page.bringToFront();
 		await page.getByRole("button", { name: "미리보기 닫기", exact: true }).dispatchEvent("click");
+		await page.getByRole("tab", { name: /^(미디어|Media)$/ }).click();
 		await page.locator("button").filter({ hasText: "전체 영상 추가" }).click();
+		await page.getByRole("button", { name: "V.Clip에서 구간 나누기", exact: true }).click();
+		await page.getByRole("tab", { name: /직접 자르기/ }).click();
 		await page.getByLabel("클립 끝 (초)", { exact: true }).fill("4");
 		await page.getByRole("button", { name: "남은 Audio 길이에 맞추기", exact: true }).click();
 		assert.equal(await page.getByLabel("클립 끝 (초)", { exact: true }).inputValue(), "3.5");

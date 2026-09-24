@@ -172,8 +172,9 @@ const DECLARED: WritePath[] = [
 	w("src/components/ai-edition/v4/AudioStage.tsx", "AudioTrackEditor", "save", "gesture"),
 	w("src/components/ai-edition/v4/AudioStage.tsx", "importAudio", "save", "gesture"),
 	w("src/components/ai-edition/v4/AudioStage.tsx", "save", "save", "gesture"),
-	// Rendered duration metadata precedes the separate, undoable timeline insertion.
-	w("src/components/ai-edition/v4/MediaClipBuilder.tsx", "createClip", "save", "automatic"),
+	// Rendered duration metadata precedes the separate, undoable timeline insertion. Shared by
+	// the manual clip builder and V.Clip's batch.
+	w("src/lib/clip-effects/addEffectClip.ts", "addEffectClip", "save", "automatic"),
 
 	// The agent's document. The optimistic write is not the edit — the save is, and
 	// it names the pre-agent document as what Ctrl+Z returns to.
