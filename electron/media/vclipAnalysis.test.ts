@@ -20,6 +20,7 @@ import {
 	parseFfmpegProbe,
 	probeVideo,
 	sampledOffsetSec,
+	thumbnailArgs,
 	windowQuality,
 } from "./vclipAnalysis";
 
@@ -100,6 +101,23 @@ describe("frame extraction arguments", () => {
 			sampledOffsetSec("[Parsed_showinfo_6 @ 0x1] n:   0 pts:    231 pts_time:0.231   duration:1"),
 		).toBe(0.231);
 		expect(sampledOffsetSec("nothing decoded")).toBeNull();
+	});
+});
+
+describe("thumbnail arguments", () => {
+	it("takes one small frame of the picture stream, keyframe first", () => {
+		const args = thumbnailArgs("C:/footage/DJI_0017.MP4", 12.34, "C:/cache/t.jpg", true);
+		expect(args.slice(args.indexOf("-skip_frame"), args.indexOf("-skip_frame") + 2)).toEqual([
+			"-skip_frame",
+			"nokey",
+		]);
+		expect(args[args.indexOf("-ss") + 1]).toBe("12.340");
+		expect(args.indexOf("-ss")).toBeLessThan(args.indexOf("-i"));
+		expect(args[args.indexOf("-map") + 1]).toBe("0:V:0");
+		expect(args[args.indexOf("-frames:v") + 1]).toBe("1");
+		expect(args[args.indexOf("-vf") + 1]).toContain("min(320,iw)");
+		expect(args.at(-1)).toBe("C:/cache/t.jpg");
+		expect(thumbnailArgs("in.mp4", 1, "out.jpg", false)).not.toContain("-skip_frame");
 	});
 });
 

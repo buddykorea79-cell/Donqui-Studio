@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAudioTrack, createEmptyDocument } from "../ai-edition/schema";
-import { audioFitSummary, fitClipEndMs } from "./audioFit";
+import { audioFitSummary } from "./audioFit";
 
 describe("audio-led clip fitting", () => {
 	it("allows an empty audio track list", () => {
@@ -40,17 +40,5 @@ describe("audio-led clip fitting", () => {
 		doc.legacyEditor = { speedRegions: [{ startMs: 0, endMs: 10000, speed: 2 }] };
 		doc.audioTracks = [createAudioTrack({ assetId: "a", durationSec: 12 })];
 		expect(audioFitSummary(doc)).toEqual({ pictureMs: 4000, audioMs: 12000, remainingMs: 8000 });
-	});
-	it("caps the chosen end at source duration", () => {
-		expect(fitClipEndMs(2000, 9000, 3000)).toBe(5000);
-		expect(fitClipEndMs(2000, 9000, 20000)).toBe(9000);
-	});
-	it.each([
-		[0, 9000, 0],
-		[9000, 9000, 1000],
-		[-1, 9000, 1000],
-		[Number.NaN, 9000, 1000],
-	])("rejects unusable fit %s/%s/%s", (start, duration, remaining) => {
-		expect(fitClipEndMs(start, duration, remaining)).toBeNull();
 	});
 });

@@ -395,7 +395,19 @@
 		"disconnect": "Trennen",
 		"cancel": "Abbrechen",
 		"save": "Speichern",
-		"saveAndUse": "Speichern & verwenden"
+		"saveAndUse": "Speichern & verwenden",
+		"ollama": {
+			"title": "Lokales Bildmodell (Ollama)",
+			"description": "V.Clip bewertet und beschreibt damit Filmabschnitte. Die Bilder verlassen diesen Computer nie.",
+			"modelLabel": "Modell",
+			"withoutAi": "Ohne KI (nur Bildqualität)",
+			"refresh": "Erneut prüfen",
+			"checking": "Ollama wird geprüft…",
+			"unavailable": "Ollama unter {{url}} ist nicht erreichbar. V.Clip bewertet nur die Bildqualität.",
+			"noModels": "Unter {{url}} ist kein Bildmodell installiert. Mit „ollama pull qwen3-vl:4b“ erhalten Sie Bewertungen und Szenenbeschreibungen.",
+			"off": "V.Clip bewertet nur die Bildqualität. {{count}} Bildmodelle sind installiert.",
+			"ready": "Verbunden mit {{url}} · {{count}} Bildmodelle. Kleinere Modelle sind schneller."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "Läuft ohne kompatible GPU — das Rendering erfolgt auf der CPU, die Wiedergabe ist daher langsamer.",

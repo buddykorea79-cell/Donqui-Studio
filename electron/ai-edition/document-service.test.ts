@@ -438,6 +438,45 @@ describe("DocumentService", () => {
 			expect(after.project.primaryAssetId).toBeUndefined();
 		});
 
+		it("takes the removed video's clips and composition items off the media board", async () => {
+			const doc = await service.createProject("P");
+			const a = await service.addAsset(doc.project.id, { path: "/tmp/a.mp4" });
+			const b = await service.addAsset(doc.project.id, { path: "/tmp/b.mp4" });
+			const [first, second] = b.assets;
+			const item = (id: string, assetId: string) => ({
+				id,
+				kind: "clip" as const,
+				assetId,
+				startSec: 0,
+				endSec: 5,
+				label: id,
+				effect: "none",
+				seed: "",
+			});
+			const withBoard = await service.saveProject({
+				...b,
+				mediaBoard: {
+					clips: [
+						{ id: "c1", assetId: first.id, startSec: 0, endSec: 5, label: "a" },
+						{ id: "c2", assetId: second.id, startSec: 0, endSec: 5, label: "b" },
+					],
+					images: [{ id: "p1", path: "/tmp/sea.jpg", label: "sea.jpg" }],
+					items: [
+						item("i1", first.id),
+						item("i2", second.id),
+						{ ...item("i3", "unused"), kind: "image" as const, assetId: undefined, imageId: "p1" },
+					],
+				},
+			});
+			expect(a.assets).toHaveLength(1);
+			const after = await service.removeAsset(withBoard.project.id, first.id);
+			expect(after.mediaBoard?.clips.map((clip) => clip.id)).toEqual(["c2"]);
+			expect(after.mediaBoard?.items.map((entry) => entry.id)).toEqual(["i2", "i3"]);
+			expect(after.mediaBoard?.images).toHaveLength(1);
+			// And it is still there when the project is read back.
+			expect((await service.getProject(after.project.id)).mediaBoard).toEqual(after.mediaBoard);
+		});
+
 		it("reassigns primaryAssetId when removing the primary", async () => {
 			const doc = await service.createProject("P");
 			const a = await service.addAsset(doc.project.id, { path: "/tmp/a.mp4" });

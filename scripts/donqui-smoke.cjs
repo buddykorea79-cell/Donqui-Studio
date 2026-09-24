@@ -1,8 +1,8 @@
-const { _electron: electron } = require("playwright");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const assert = require("node:assert/strict");
+const { launchDirect } = require("./electron-direct-launch.cjs");
 const root = process.cwd();
 const validation = path.join(root, ".local", "donqui-validation");
 const profile = path.join(validation, `profile-${Date.now()}`);
@@ -20,8 +20,8 @@ function fixture(args) {
 	});
 	assert.equal(result.status, 0, result.stderr);
 }
-async function savedDocument(check) {
-	const deadline = Date.now() + 120000;
+async function savedDocument(check, timeoutMs = 120000) {
+	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		const dir = path.join(profile, "projects");
 		for (const file of (await fs.readdir(dir).catch(() => [])).filter((f) =>
@@ -45,12 +45,12 @@ async function launch() {
 		PATH: `${native}${path.delimiter}${process.env.PATH}`,
 	};
 	delete env.ELECTRON_RUN_AS_NODE;
-	return electron.launch({
+	// Not Playwright's `_electron.launch`: see electron-direct-launch.cjs.
+	return launchDirect({
 		executablePath: path.join(root, "node_modules/electron/dist/electron.exe"),
 		args: [".", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding"],
 		cwd: root,
 		env,
-		timeout: 30000,
 	});
 }
 (async () => {
@@ -121,48 +121,94 @@ async function launch() {
 		await page.waitForTimeout(350);
 		await page.getByRole("button", { name: "일시 정지", exact: true }).click();
 		await page.screenshot({ path: path.join(validation, "audio.png") });
+		// V.Clip: split a range of the video. Only the range is recorded; nothing renders here.
+		await page.getByRole("tab", { name: "V.Clip", exact: true }).click();
+		await page.getByRole("button", { name: "영상 가져오기", exact: true }).first().click();
+		const panel = page.getByRole("region", { name: "video.mp4 구간" });
+		await panel.getByText(/640×360/).waitFor({ timeout: 60000 });
+		await panel.getByRole("button", { name: /구간 직접 추가/ }).click();
+		const card = panel.getByRole("article").first();
+		await card.getByText(/^0:00\.0–0:04\.0/).waitFor();
+		await card.getByLabel("길이 (초)", { exact: true }).fill("3.5");
+		await card.getByLabel("길이 (초)", { exact: true }).press("Enter");
+		await card.getByText("0:00.0–0:03.5 · 3.5초").waitFor();
+		await card.getByRole("button", { name: /구간 미리보기$/ }).click();
+		await card.locator("video").waitFor();
+		await page.waitForTimeout(800);
+		await page.screenshot({ path: path.join(validation, "vclip.png") });
+		await page
+			.getByRole("button", { name: /선택한 구간 1개 클립으로 나누기/ })
+			.first()
+			.click();
+		let doc = await savedDocument((value) => value.mediaBoard?.clips?.length === 1);
+		assert.deepEqual([doc.mediaBoard.clips[0].startSec, doc.mediaBoard.clips[0].endSec], [0, 3.5]);
+		assert.equal(doc.timeline.clips.length, 0);
+		console.log("PASS V.Clip: a 3.5 s range split into Media's bin, nothing rendered or placed");
+
+		// Media: a photo with a random effect, then the clip zoomed, fitted to the 5 s of music.
 		await page.getByRole("tab", { name: /^(미디어|Media)$/ }).click();
-		await page.getByLabel("사진 클립 길이 (초)", { exact: true }).fill("1.5");
+		await page.getByRole("tab", { name: /^사진/ }).click();
 		await page.getByRole("button", { name: "사진 추가", exact: true }).click();
-		// Clips are cut in V.Clip; Media hands the selected source over.
-		await page.getByRole("button", { name: "V.Clip에서 구간 나누기", exact: true }).click();
-		await page.getByRole("tab", { name: /직접 자르기/ }).click();
-		await page.getByRole("button", { name: "클립 미리보기", exact: true }).waitFor();
-		await page.getByLabel("Remotion 효과", { exact: true }).selectOption("random");
-		await page.getByRole("button", { name: "클립 미리보기", exact: true }).click();
-		await page.locator("section[aria-label='클립 만들기'] video").waitFor();
-		await page.screenshot({ path: path.join(validation, "clip-preview.png") });
-		await page.getByRole("button", { name: "클립 만들고 타임라인에 추가", exact: true }).click();
-		let doc = await savedDocument(
-			(value) =>
-				value.timeline.clips.length === 1 &&
-				Math.abs(value.timeline.clips[0].timelineEndSec - 1.5) < 0.04,
-		);
-		assert.equal(doc.audioTracks[0].endMs, 5000);
-		assert(Math.abs(doc.timeline.clips[0].timelineEndSec - 1.5) < 0.04);
+		doc = await savedDocument((value) => value.mediaBoard?.images?.length === 1);
+		assert.deepEqual([doc.mediaBoard.images[0].width, doc.mediaBoard.images[0].height], [640, 360]);
+		await page.getByLabel("사진 길이 (초)", { exact: true }).fill("2");
+		await page.getByLabel("새 항목 효과", { exact: true }).selectOption("random");
+		await page.getByRole("button", { name: "조합에 넣기", exact: true }).click();
+		await page.getByRole("tab", { name: /^V\.Clip 클립/ }).click();
+		await page.getByLabel("새 항목 효과", { exact: true }).selectOption("zoom-in");
+		await page.getByRole("button", { name: "조합에 넣기", exact: true }).click();
+		await savedDocument((value) => value.mediaBoard?.items?.length === 2);
+		await page.getByText("0:00.5 넘침").waitFor();
+		await page.getByRole("button", { name: "Audio 길이에 맞추기", exact: true }).click();
+		const total = (value) =>
+			value.mediaBoard.items.reduce((sum, item) => sum + item.endSec - item.startSec, 0);
+		doc = await savedDocument((value) => Math.abs(total(value) - 5) < 0.02);
 		console.log(
-			"PASS photo random Remotion effect: preview, render, timeline insert, full audio bed retained",
+			`PASS Media fit: 2 s photo + 3.5 s clip fitted to the 5 s bed → ${doc.mediaBoard.items
+				.map((item) => (item.endSec - item.startSec).toFixed(3))
+				.join(" + ")}`,
 		);
-		await page.bringToFront();
-		await page.getByRole("button", { name: "미리보기 닫기", exact: true }).dispatchEvent("click");
-		await page.getByRole("tab", { name: /^(미디어|Media)$/ }).click();
-		await page.locator("button").filter({ hasText: "전체 영상 추가" }).click();
-		await page.getByRole("button", { name: "V.Clip에서 구간 나누기", exact: true }).click();
-		await page.getByRole("tab", { name: /직접 자르기/ }).click();
-		await page.getByLabel("클립 끝 (초)", { exact: true }).fill("4");
-		await page.getByRole("button", { name: "남은 Audio 길이에 맞추기", exact: true }).click();
-		assert.equal(await page.getByLabel("클립 끝 (초)", { exact: true }).inputValue(), "3.5");
-		await page.getByLabel("Remotion 효과", { exact: true }).selectOption("zoom-in");
-		await page.getByRole("button", { name: "클립 만들고 타임라인에 추가", exact: true }).click();
+		const previewButton = page.getByRole("button", { name: "1번 미리보기", exact: true });
+		const previewOpens = async (timeoutMs) => {
+			const deadline = Date.now() + timeoutMs;
+			while (Date.now() < deadline) {
+				if ((await previewButton.getAttribute("aria-pressed")) === "true") return true;
+				await page.waitForTimeout(250);
+			}
+			return false;
+		};
+		// The button toggles, so clicking again too soon would close what a slow first click opened.
+		// Ask again only after long enough for that click to have landed (it took 15–315 ms in
+		// traced runs), and say how long it took.
+		const clickedAt = Date.now();
+		await previewButton.click();
+		if (!(await previewOpens(15000))) {
+			console.log("preview did not open 15 s after the click; clicking again");
+			await previewButton.click();
+			assert(await previewOpens(15000), "the preview did not open");
+		}
+		console.log(`preview opened ${Date.now() - clickedAt} ms after the click`);
+		// The Remotion player shows the photo through <Img>, under the item.
+		await page.locator("[class*=itemPreview] img").first().waitFor({ timeout: 60000 });
+		await page.waitForTimeout(800);
+		await page.screenshot({ path: path.join(validation, "media-compose.png") });
+		await page.getByRole("button", { name: "1번 미리보기", exact: true }).click();
+		await page.getByRole("button", { name: /타임라인에 적용/ }).click();
 		doc = await savedDocument(
 			(value) =>
 				value.timeline.clips.length === 2 &&
 				Math.abs(value.timeline.clips[1].timelineEndSec - 5) < 0.04,
+			600000,
 		);
-		assert(Math.abs(doc.timeline.clips[1].timelineEndSec - 5) < 0.04);
 		assert.equal(doc.audioTracks[0].endMs, 5000);
+		const placed = doc.timeline.clips.map(
+			(clip) => doc.assets.find((asset) => asset.id === clip.assetId)?.originalPath ?? "",
+		);
+		assert(/[\\/]clip-effects[\\/]/.test(placed[0]), `photo not rendered: ${placed[0]}`);
+		assert(/[\\/]clip-effects[\\/]/.test(placed[1]), `clip not rendered: ${placed[1]}`);
+		await page.screenshot({ path: path.join(validation, "media-applied.png") });
 		console.log(
-			"PASS video trim + zoom effect: fits remaining Audio duration (3.5s), combined picture 5s",
+			"PASS Media apply: photo (random effect) and clip (zoom-in) rendered by Remotion, 5 s picture, music bed intact",
 		);
 		await fs.writeFile(path.join(validation, "project.openscreen"), JSON.stringify(doc, null, 2));
 		await page.getByRole("tab", { name: /^(편집|Edit)$/ }).click();
@@ -200,6 +246,20 @@ async function launch() {
 		page = await app.firstWindow();
 		await page.getByText("Donqui audio-led validation", { exact: true }).first().waitFor();
 		console.log("PASS restart: audio-led project restored");
+		// The photo is rendered from its original file, which only the project names after a
+		// restart: applying again proves the main process approved it from the document.
+		await page.getByRole("tab", { name: /^(미디어|Media)$/ }).click();
+		const before = doc.timeline.clips.map((clip) => clip.id).join();
+		await page.getByRole("button", { name: /타임라인에 적용/ }).click();
+		await page.getByRole("button", { name: "바꾸기", exact: true }).click();
+		doc = await savedDocument(
+			(value) =>
+				value.timeline.clips.length === 2 &&
+				value.timeline.clips.map((clip) => clip.id).join() !== before,
+			120000,
+		);
+		assert.equal(doc.mediaBoard.items.length, 2);
+		console.log("PASS restart: composition persisted and re-applied from the render cache");
 		await fs.writeFile(path.join(validation, "profile.txt"), profile);
 	} catch (error) {
 		console.error("SMOKE FAILURE", error);

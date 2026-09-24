@@ -22,6 +22,12 @@ export interface ClipEffectRuntime {
 export function validateClipEffectRequest(request: CreateClipEffectRequest): void {
 	if (!request || typeof request.sourcePath !== "string" || !path.isAbsolute(request.sourcePath))
 		throw new Error("Choose a local video or imported photo first");
+	if (
+		request.sourceKind !== undefined &&
+		request.sourceKind !== "video" &&
+		request.sourceKind !== "image"
+	)
+		throw new Error("Unknown clip source kind");
 	if (!isClipEffectId(request.effect)) throw new Error("Unknown clip effect");
 	if (
 		!Number.isFinite(request.startMs) ||
@@ -50,6 +56,8 @@ export async function clipEffectCacheKey(request: CreateClipEffectRequest): Prom
 			endMs: request.endMs,
 			effect: request.effect,
 			...clipEffectDimensions(request.width, request.height),
+			// Only a photo says so: a video's key stays what it was, and so does its cache.
+			...(request.sourceKind === "image" ? { sourceKind: "image" } : {}),
 		}),
 	);
 	for await (const chunk of createReadStream(request.sourcePath)) hash.update(chunk);
@@ -125,8 +133,15 @@ async function renderClipEffect(
 		);
 	const runtimeRequire = createRequire(path.join(runtime.runtimePath, "package.json"));
 	const renderer: typeof import("@remotion/renderer") = runtimeRequire("@remotion/renderer");
-	const metadata = await renderer.getVideoMetadata(request.sourcePath, { logLevel: "error" });
-	if (!metadata.durationInSeconds || request.endMs > metadata.durationInSeconds * 1000 + 50)
+	const image = request.sourceKind === "image";
+	// A photo has no length of its own to overrun, and no sound.
+	const metadata = image
+		? null
+		: await renderer.getVideoMetadata(request.sourcePath, { logLevel: "error" });
+	if (
+		metadata &&
+		(!metadata.durationInSeconds || request.endMs > metadata.durationInSeconds * 1000 + 50)
+	)
 		throw new Error("The selected clip extends beyond the source video");
 	const browserExecutable = clipEffectBrowserCandidates().find((candidate) =>
 		existsSync(candidate),
@@ -142,6 +157,7 @@ async function renderClipEffect(
 			sourceUrl: server.sourceUrl,
 			startMs: request.startMs,
 			effect: request.effect,
+			sourceKind: image ? ("image" as const) : ("video" as const),
 		};
 		const composition = await renderer.selectComposition({
 			serveUrl: runtime.bundlePath,
@@ -158,7 +174,7 @@ async function renderClipEffect(
 			codec: "h264",
 			// Photos and silent videos must stay without an audio stream. Otherwise the
 			// synthetic silent AAC track makes automatic transcription treat them as speech.
-			muted: metadata.audioCodec === null,
+			muted: metadata === null || metadata.audioCodec === null,
 			pixelFormat: "yuv420p",
 			crf: 18,
 			concurrency: 2,

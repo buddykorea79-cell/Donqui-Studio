@@ -395,7 +395,19 @@
 		"disconnect": "断开连接",
 		"cancel": "取消",
 		"save": "保存",
-		"saveAndUse": "保存并使用"
+		"saveAndUse": "保存并使用",
+		"ollama": {
+			"title": "本地视觉模型 (Ollama)",
+			"description": "V.Clip 用它为视频片段打分和描述。画面不会离开这台电脑。",
+			"modelLabel": "模型",
+			"withoutAi": "不使用 AI（仅画质评分）",
+			"refresh": "重新检查",
+			"checking": "正在检查 Ollama…",
+			"unavailable": "无法连接 {{url}} 上的 Ollama。V.Clip 仅按画质评分挑选。",
+			"noModels": "{{url}} 上没有视觉模型。运行“ollama pull qwen3-vl:4b”安装后即可获得评分和场景描述。",
+			"off": "V.Clip 仅按画质评分挑选。已安装 {{count}} 个视觉模型。",
+			"ready": "已连接 {{url}} · {{count}} 个视觉模型。模型越小越快。"
+		}
 	},
 	"cpuCompositor": {
 		"notice": "没有兼容的 GPU，正在使用 CPU 渲染，因此播放较慢。",

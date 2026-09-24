@@ -23,6 +23,20 @@ export function parseMediaRange(
 	return { start, end };
 }
 
+const CONTENT_TYPES: Record<string, string> = {
+	".webm": "video/webm",
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".bmp": "image/bmp",
+};
+
+/** What the headless browser is told the file is; any other container plays as MP4. */
+export function clipSourceContentType(sourcePath: string): string {
+	return CONTENT_TYPES[path.extname(sourcePath).toLowerCase()] ?? "video/mp4";
+}
+
 /** A short-lived loopback server exposing exactly one approved file, with video seeking. */
 export async function serveClipSource(sourcePath: string) {
 	const { size } = await stat(sourcePath);
@@ -43,8 +57,7 @@ export async function serveClipSource(sourcePath: string) {
 			"Access-Control-Allow-Origin": "*",
 			"Accept-Ranges": "bytes",
 			"Content-Length": end - start + 1,
-			"Content-Type":
-				path.extname(sourcePath).toLowerCase() === ".webm" ? "video/webm" : "video/mp4",
+			"Content-Type": clipSourceContentType(sourcePath),
 			"Cache-Control": "no-store",
 			...(range ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),
 		});

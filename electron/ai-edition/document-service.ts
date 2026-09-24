@@ -410,6 +410,17 @@ export class DocumentService {
 			// Drop imported audio tracks that referenced the removed asset — they
 			// would otherwise dangle, pointing at an asset the document no longer has.
 			audioTracks: withoutAssetClips.audioTracks.filter((t) => t.assetId !== assetId),
+			// Its V.Clip clips, and what Media composed from it, go too. Photos are files of
+			// their own and stay.
+			...(withoutAssetClips.mediaBoard
+				? {
+						mediaBoard: {
+							...withoutAssetClips.mediaBoard,
+							clips: withoutAssetClips.mediaBoard.clips.filter((c) => c.assetId !== assetId),
+							items: withoutAssetClips.mediaBoard.items.filter((i) => i.assetId !== assetId),
+						},
+					}
+				: {}),
 			timeline: {
 				...withoutAssetClips.timeline,
 				trimRanges: withoutAssetClips.timeline.trimRanges.filter((r) => r.assetId !== assetId),

@@ -395,7 +395,19 @@
 		"disconnect": "Desconectar",
 		"cancel": "Cancelar",
 		"save": "Guardar",
-		"saveAndUse": "Guardar y usar"
+		"saveAndUse": "Guardar y usar",
+		"ollama": {
+			"title": "Modelo de visión local (Ollama)",
+			"description": "V.Clip lo usa para puntuar y describir los segmentos del metraje. Los fotogramas nunca salen de este equipo.",
+			"modelLabel": "Modelo",
+			"withoutAi": "Sin IA (solo calidad de imagen)",
+			"refresh": "Volver a comprobar",
+			"checking": "Comprobando Ollama…",
+			"unavailable": "No se puede conectar con Ollama en {{url}}. V.Clip solo puntúa la calidad de imagen.",
+			"noModels": "No hay ningún modelo de visión instalado en {{url}}. Ejecuta \"ollama pull qwen3-vl:4b\" para obtener puntuaciones y descripciones de escena.",
+			"off": "V.Clip solo puntúa la calidad de imagen. Hay {{count}} modelos de visión instalados.",
+			"ready": "Conectado a {{url}} · {{count}} modelos de visión. Los modelos más pequeños son más rápidos."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "Sin GPU compatible: el renderizado se hace en la CPU, por lo que la reproducción es más lenta.",

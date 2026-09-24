@@ -30,14 +30,3 @@ export function audioFitSummary(document: AxcutDocument) {
 	);
 	return { pictureMs, audioMs, remainingMs: Math.max(0, audioMs - pictureMs) };
 }
-
-export function fitClipEndMs(startMs: number, sourceDurationMs: number, remainingMs: number) {
-	if (
-		![startMs, sourceDurationMs, remainingMs].every(Number.isFinite) ||
-		startMs < 0 ||
-		startMs >= sourceDurationMs ||
-		remainingMs <= 0
-	)
-		return null;
-	return Math.min(sourceDurationMs, startMs + remainingMs);
-}

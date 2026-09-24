@@ -7,6 +7,7 @@ import {
 	parseJsonObject,
 	parseProposal,
 	resolveOllamaBaseUrl,
+	withPrefill,
 } from "./ollamaVision";
 
 function json(body: unknown, status = 200): Response {
@@ -158,6 +159,36 @@ describe("analyzeSegmentFrames", () => {
 		]);
 		// Control characters in a file name never reach the prompt.
 		expect(body.messages[0].content).not.toContain("\u0007");
+		// The answer is started for the model, so a thinking model answers instead of reasoning.
+		expect(body.messages[1]).toEqual({ role: "assistant", content: "{" });
+	});
+
+	it("completes a reply that continues the prefilled brace", async () => {
+		const fetcher = vi.fn(async () =>
+			json({
+				message: {
+					content:
+						' "score": 85, "category": "static_beauty", "description": "호수 위 건물", "caption": "물 위의 집", "tags": "water, building" }',
+				},
+			}),
+		);
+		const proposal = await analyzeSegmentFrames(request, undefined, fetcher as typeof fetch);
+		expect(proposal).toEqual({
+			score: 85,
+			category: "static_beauty",
+			description: "호수 위 건물",
+			caption: "물 위의 집",
+			tags: ["water", "building"],
+		});
+	});
+
+	it("keeps an empty reply empty, so the failure says so", async () => {
+		const fetcher = vi.fn(async () => json({ message: { content: "", thinking: "" } }));
+		await expect(analyzeSegmentFrames(request, undefined, fetcher as typeof fetch)).rejects.toThrow(
+			"(empty reply)",
+		);
+		expect(withPrefill({ content: "  " })).toEqual({ content: "  " });
+		expect(withPrefill({ content: '{"score": 1}' })).toEqual({ content: '{"score": 1}' });
 	});
 
 	it("surfaces Ollama's own error text", async () => {

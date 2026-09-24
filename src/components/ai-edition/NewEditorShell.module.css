@@ -2084,6 +2084,66 @@
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
 }
 
+/* The local Ollama vision model V.Clip scores footage with, under the provider grid. */
+.ollamaSection {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.ollamaHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ollamaHead h4 {
+  margin: 0;
+  font: 600 14px var(--font-body);
+  color: var(--fg);
+}
+.ollamaSection p {
+  margin: 0;
+  font: 500 12px/1.55 var(--font-body);
+  color: var(--muted);
+}
+.ollamaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ollamaRow label {
+  flex-shrink: 0;
+  font: 500 var(--fs-app-sm) var(--font-body);
+  color: var(--fg-2);
+}
+.ollamaRow select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  font: 400 var(--fs-app-sm) var(--font-body);
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ollamaRow button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.ollamaRow button:disabled { opacity: 0.5; cursor: default; }
+
 .providerForm {
   display: flex;
   flex-direction: column;

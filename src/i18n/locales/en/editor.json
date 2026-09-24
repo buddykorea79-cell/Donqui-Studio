@@ -395,7 +395,19 @@
 		"disconnect": "Disconnect",
 		"cancel": "Cancel",
 		"save": "Save",
-		"saveAndUse": "Save & use"
+		"saveAndUse": "Save & use",
+		"ollama": {
+			"title": "Local vision model (Ollama)",
+			"description": "V.Clip uses it to score and describe footage segments. Frames never leave this computer.",
+			"modelLabel": "Model",
+			"withoutAi": "Without AI (frame quality only)",
+			"refresh": "Check again",
+			"checking": "Checking Ollama…",
+			"unavailable": "Cannot reach Ollama at {{url}}. V.Clip scores frame quality only.",
+			"noModels": "No vision model installed at {{url}}. Run \"ollama pull qwen3-vl:4b\" to get scores and scene descriptions.",
+			"off": "V.Clip scores frame quality only. {{count}} vision models are installed.",
+			"ready": "Connected to {{url}} · {{count}} vision models. Smaller models are faster."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "Running without a compatible GPU — rendering on CPU, so playback is slower.",

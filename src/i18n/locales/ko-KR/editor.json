@@ -395,7 +395,19 @@
 		"disconnect": "연결 해제",
 		"cancel": "취소",
 		"save": "저장",
-		"saveAndUse": "저장 후 사용"
+		"saveAndUse": "저장 후 사용",
+		"ollama": {
+			"title": "로컬 비전 모델 (Ollama)",
+			"description": "V.Clip이 영상 구간에 점수와 설명을 붙일 때 씁니다. 프레임은 이 컴퓨터 밖으로 나가지 않습니다.",
+			"modelLabel": "모델",
+			"withoutAi": "AI 없이 (화질 점수만)",
+			"refresh": "다시 확인",
+			"checking": "Ollama 확인 중…",
+			"unavailable": "{{url}}의 Ollama에 연결할 수 없습니다. V.Clip은 화질 점수로만 고릅니다.",
+			"noModels": "{{url}}에 비전 모델이 없습니다. \"ollama pull qwen3-vl:4b\"로 설치하면 점수와 장면 설명을 받을 수 있습니다.",
+			"off": "V.Clip이 화질 점수로만 고릅니다. 설치된 비전 모델 {{count}}개.",
+			"ready": "{{url}}에 연결됨 · 비전 모델 {{count}}개. 작은 모델일수록 빠릅니다."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "호환되는 GPU가 없어 CPU로 렌더링합니다. 재생이 느려집니다.",

@@ -395,7 +395,19 @@
 		"disconnect": "Bağlantıyı kes",
 		"cancel": "İptal",
 		"save": "Kaydet",
-		"saveAndUse": "Kaydet ve kullan"
+		"saveAndUse": "Kaydet ve kullan",
+		"ollama": {
+			"title": "Yerel görü modeli (Ollama)",
+			"description": "V.Clip bunu çekim bölümlerini puanlamak ve açıklamak için kullanır. Kareler bu bilgisayardan hiç çıkmaz.",
+			"modelLabel": "Model",
+			"withoutAi": "Yapay zekâ olmadan (yalnızca görüntü kalitesi)",
+			"refresh": "Yeniden denetle",
+			"checking": "Ollama denetleniyor…",
+			"unavailable": "{{url}} adresindeki Ollama'ya ulaşılamıyor. V.Clip yalnızca görüntü kalitesini puanlar.",
+			"noModels": "{{url}} adresinde yüklü görü modeli yok. Puan ve sahne açıklaması almak için \"ollama pull qwen3-vl:4b\" komutunu çalıştırın.",
+			"off": "V.Clip yalnızca görüntü kalitesini puanlar. {{count}} görü modeli yüklü.",
+			"ready": "{{url}} adresine bağlandı · {{count}} görü modeli. Küçük modeller daha hızlıdır."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "Uyumlu GPU yok — işleme CPU üzerinde yapılıyor, bu yüzden oynatma daha yavaş.",

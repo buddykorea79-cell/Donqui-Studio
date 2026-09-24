@@ -1,38 +1,60 @@
-import { ArrowDown, Film, Plus, RotateCw, ScanSearch, Search, X } from "lucide-react";
+import {
+	FileText,
+	Film,
+	Image as ImageIcon,
+	ListPlus,
+	Plus,
+	Scissors,
+	Search,
+	SquarePlus,
+	Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useI18n, useScopedT } from "@/contexts/I18nContext";
-import type { AxcutAsset, TranscriptLanguageCode } from "@/lib/ai-edition/schema";
+import { toFileUrl } from "@/components/video-editor/projectPersistence";
+import { useScopedT } from "@/contexts/I18nContext";
+import type {
+	AxcutAsset,
+	AxcutMediaBoardClip,
+	AxcutMediaBoardImage,
+	AxcutMediaBoardItem,
+} from "@/lib/ai-edition/schema";
 import { useProjectStore } from "@/lib/ai-edition/store/projectStore";
+import { useAssetTranscriptions } from "@/lib/ai-edition/store/transcriptionStore";
+import { formatSec, formatSeconds } from "@/lib/ai-edition/timeline/format";
+import type { AssetTranscriptionStatus } from "@/lib/ai-edition/transcription/status";
+import { type ClipEffectSelection, isClipEffectId } from "@/lib/clip-effects/catalog";
+import { readImageSize } from "@/lib/media-board/apply";
 import {
-	useAssetTranscriptions,
-	useTranscriptionStore,
-} from "@/lib/ai-edition/store/transcriptionStore";
-import { formatSeconds } from "@/lib/ai-edition/timeline/format";
-import {
-	languageLabel,
-	sortedLanguageOptions,
-} from "@/lib/ai-edition/transcription/languageLabels";
-import {
-	type AssetTranscriptionStatus,
-	type AssetTranscriptionView,
-	isSilentFailure,
-} from "@/lib/ai-edition/transcription/status";
+	addBoardImages,
+	addBoardItems,
+	boardOf,
+	clipItem,
+	DEFAULT_IMAGE_SEC,
+	type ImageDraft,
+	imageItem,
+	isSourceVideo,
+	MAX_IMAGE_SEC,
+	MIN_ITEM_SEC,
+	removeBoardClip,
+	removeBoardImage,
+	sortedBoardClips,
+	videoItem,
+} from "@/lib/media-board/board";
+import { mutateDocument } from "@/lib/media-board/mutate";
+import { useThumbnail } from "@/lib/media-board/thumbnails";
+import { useVClipStore } from "@/lib/vclip/store";
 import { formatBytes } from "@/utils/formatBytes";
-import {
-	TranscriptionProgressBar,
-	TranscriptionStatusDot,
-	useTranscriptionLabel,
-} from "../TranscriptionStatus";
-import styles from "./EditorShellV4.module.css";
+import { TranscriptionStatusDot } from "../TranscriptionStatus";
+import { MediaComposition } from "./MediaComposition";
+import styles from "./MediaStage.module.css";
+import { MediaTranscriptPanel } from "./MediaTranscriptPanel";
 
 const ASSET_MIME = "application/x-axcut-asset";
-const THUMB_GRADIENTS = [
-	"linear-gradient(135deg, #fb7185, #f97316)",
-	"linear-gradient(135deg, #10b981, #0d986a)",
-	"linear-gradient(135deg, #fbbf24, #f59e0b)",
-	"linear-gradient(135deg, #38bdf8, #6366f1)",
-];
+const EFFECT_KEY = "donqui.media.defaultEffect";
+const PHOTO_SEC_KEY = "donqui.media.photoSec";
+
+type LibraryTab = "clips" | "photos" | "videos";
 
 function basename(path: string): string {
 	return path.split(/[\\/]/).pop() ?? path;
@@ -48,60 +70,85 @@ export async function addSelectedAssetToTimeline(
 	onSuccess(selected.label || basename(selected.originalPath));
 }
 
+function readStored<T>(key: string, parse: (value: string | null) => T): T {
+	try {
+		return parse(localStorage.getItem(key));
+	} catch {
+		return parse(null);
+	}
+}
+
+function store(key: string, value: string): void {
+	try {
+		localStorage.setItem(key, value);
+	} catch {
+		// A preference only.
+	}
+}
+
+function message(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function addItems(items: AxcutMediaBoardItem[], what: string) {
+	if (items.length === 0) return;
+	void mutateDocument((document) => addBoardItems(document, items), { history: true })
+		.then((saved) => {
+			if (saved) toast.success(`${what}을(를) 조합에 넣었습니다.`);
+		})
+		.catch((error: unknown) =>
+			toast.error("조합에 넣지 못했습니다.", { description: message(error) }),
+		);
+}
+
+function matches(query: string, ...texts: Array<string | undefined>): boolean {
+	if (!query) return true;
+	const needle = query.toLowerCase();
+	return texts.some((text) => text?.toLowerCase().includes(needle));
+}
+
+/**
+ * Media: the material — V.Clip's clips, photos and whole videos — and the composition built
+ * from it. Each composition item carries its own Remotion effect; the composition is fitted to
+ * the Audio tab's soundtrack and rendered onto the timeline in one go.
+ */
 export function MediaStage({
 	onAddToTimeline,
 	onOpenInVClip,
 }: {
 	onAddToTimeline: (assetId: string) => Promise<void>;
-	/** Clips are cut in V.Clip; this opens it on the selected source. */
-	onOpenInVClip: (assetId: string) => void;
+	/** Clips are cut in V.Clip; this opens it, on a source when one is given. */
+	onOpenInVClip: (assetId: string | null) => void;
 }) {
 	const t = useScopedT("editor");
-	const { locale } = useI18n();
-	const projectId = useProjectStore((s) => s.projectId);
-	const document = useProjectStore((s) => s.document);
-	const addAsset = useProjectStore((s) => s.addAsset);
-	// Transcripts are produced in the background as soon as a media lands here
-	// (see transcriptionStore) — this stage only reports where each one is at,
-	// and lets the user force a re-run in another language.
-	const transcriptions = useAssetTranscriptions();
-	const requestTranscription = useTranscriptionStore((s) => s.request);
-	const transcriptionLabel = useTranscriptionLabel();
+	const projectId = useProjectStore((state) => state.projectId);
+	const document = useProjectStore((state) => state.document);
+	const board = boardOf(document);
+	const videos = useMemo(() => (document?.assets ?? []).filter(isSourceVideo), [document?.assets]);
+	const clips = useMemo(
+		() => sortedBoardClips(board, document?.assets ?? []),
+		[board, document?.assets],
+	);
+	const [tab, setTab] = useState<LibraryTab>(() =>
+		board.clips.length > 0 ? "clips" : board.images.length > 0 ? "photos" : "videos",
+	);
 	const [query, setQuery] = useState("");
 	const [busy, setBusy] = useState(false);
-	const [photoDuration, setPhotoDuration] = useState(5);
-	const [appendOnImport, setAppendOnImport] = useState(false);
-	const [selectedId, setSelectedId] = useState<string | null>(null);
-	const [detailOpen, setDetailOpen] = useState(false);
-	const [lang, setLang] = useState<TranscriptLanguageCode>("auto");
-	const regenLanguageOptions = useMemo(
-		() => sortedLanguageOptions(locale, t("mediaStage.auto")),
-		[locale, t],
+	const [detailId, setDetailId] = useState<string | null>(null);
+	const [photoSec, setPhotoSec] = useState(() =>
+		readStored(PHOTO_SEC_KEY, (value) => Number(value) || DEFAULT_IMAGE_SEC),
 	);
-
-	// Video only — this stage arranges clips. Imported audio (issue #350) is a
-	// timeline overlay added from the timeline toolbar, not a clip, so it never
-	// appears in this list.
-	const assets = (document?.assets ?? []).filter((a) => a.kind !== "audio");
-	const filtered = useMemo(
-		() =>
-			assets.filter((a) => {
-				if (!query) return true;
-				return `${a.label} ${a.originalPath}`.toLowerCase().includes(query.toLowerCase());
-			}),
-		[assets, query],
+	const [defaultEffect, setDefaultEffect] = useState<ClipEffectSelection>(() =>
+		readStored(EFFECT_KEY, (value) =>
+			value === "random" || isClipEffectId(value) ? value : "none",
+		),
 	);
-	const selected = assets.find((a) => a.id === selectedId) ?? null;
-	const transcript = selected
-		? (document?.transcripts?.find((t) => t.assetId === selected.id) ?? null)
-		: null;
-	const selectedTranscription: AssetTranscriptionView = selected
-		? (transcriptions[selected.id] ?? { assetId: selected.id, status: "idle" })
-		: { assetId: "", status: "idle" };
-	const selectedBusy =
-		selectedTranscription.status === "running" || selectedTranscription.status === "queued";
+	const detail = videos.find((asset) => asset.id === detailId) ?? null;
+	const validPhotoSec =
+		Number.isFinite(photoSec) && photoSec >= MIN_ITEM_SEC && photoSec <= MAX_IMAGE_SEC;
+	const choice = () => ({ effect: defaultEffect });
 
-	const handleImport = async (photo = false) => {
+	const importVideos = async () => {
 		if (!projectId) {
 			toast.error(t("mediaStage.openProjectFirst"));
 			return;
@@ -109,450 +156,486 @@ export function MediaStage({
 		if (busy) return;
 		setBusy(true);
 		try {
-			const picker = photo
-				? await window.electronAPI?.openImageClipPicker?.(photoDuration)
-				: await window.electronAPI?.openVideoFilePicker();
-			if (!picker?.success || !picker.path) {
-				if (picker && "message" in picker && picker.message)
-					throw new Error(String(picker.message));
-				if (!picker && photo)
-					throw new Error("사진 가져오기는 Donqui Studio 데스크톱 앱에서 사용할 수 있습니다.");
-				return;
+			const picker = await window.electronAPI?.openVideoFilesPicker?.();
+			if (!picker)
+				throw new Error("영상 가져오기는 Donqui Studio 데스크톱 앱에서 사용할 수 있습니다.");
+			if (picker.canceled) return;
+			if (!picker.success) throw new Error(picker.message || "영상을 읽을 수 없습니다.");
+			let added = 0;
+			for (const file of picker.files) {
+				if (useProjectStore.getState().projectId !== projectId) return;
+				const exists = useProjectStore
+					.getState()
+					.document?.assets.some((asset) => asset.originalPath === file.path);
+				if (!exists && (await useProjectStore.getState().addAsset(file.path, file.name))) added++;
 			}
-			if (useProjectStore.getState().projectId !== projectId) return;
-			const label = picker.name || basename(picker.path);
-			const asset = await addAsset(picker.path, label);
-			if (asset && appendOnImport) await onAddToTimeline(asset.id);
-			if (asset) {
-				setSelectedId(asset.id);
-				setDetailOpen(true);
-			}
-			toast.success(t("mediaStage.added", { label }));
-		} catch (err) {
-			toast.error(t("mediaStage.couldNotAddAsset"), {
-				description: err instanceof Error ? err.message : String(err),
-			});
+			setTab("videos");
+			if (added > 0) toast.success(`영상 ${added}개를 가져왔습니다.`);
+			if (picker.rejected.length > 0)
+				toast.error(`읽을 수 없는 파일 ${picker.rejected.length}개는 건너뛰었습니다.`, {
+					description: picker.rejected.join(", "),
+				});
+		} catch (error) {
+			toast.error(t("mediaStage.couldNotAddAsset"), { description: message(error) });
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	const openDetail = (asset: AxcutAsset) => {
-		setSelectedId(asset.id);
-		setDetailOpen(true);
+	const importPhotos = async () => {
+		if (!projectId) {
+			toast.error(t("mediaStage.openProjectFirst"));
+			return;
+		}
+		if (busy) return;
+		setBusy(true);
+		try {
+			const picker = await window.electronAPI?.openImageFilesPicker?.();
+			if (!picker) throw new Error("사진 추가는 Donqui Studio 데스크톱 앱에서 사용할 수 있습니다.");
+			if (picker.canceled) return;
+			if (!picker.success) throw new Error(picker.message || "사진을 읽을 수 없습니다.");
+			const drafts: ImageDraft[] = [];
+			for (const file of picker.files) {
+				const size = await readImageSize(toFileUrl(file.path));
+				drafts.push({ path: file.path, label: file.name, ...(size ?? {}) });
+			}
+			const saved = await mutateDocument((document) => addBoardImages(document, drafts).document, {
+				history: true,
+			});
+			setTab("photos");
+			if (saved) toast.success(`사진 ${drafts.length}장을 추가했습니다.`);
+			if (picker.rejected.length > 0)
+				toast.error(`읽을 수 없는 사진 ${picker.rejected.length}장은 건너뛰었습니다.`, {
+					description: picker.rejected.join(", "),
+				});
+		} catch (error) {
+			toast.error("사진을 추가하지 못했습니다.", { description: message(error) });
+		} finally {
+			setBusy(false);
+		}
 	};
 
-	const addSelectedToTimeline = () => {
-		void addSelectedAssetToTimeline(selected, onAddToTimeline, (label) => {
-			toast.success(t("mediaStage.addedToTimeline", { label }));
-		}).catch(() => undefined);
+	const addVideo = async (asset: AxcutAsset) => {
+		const durationSec =
+			asset.durationSec || (await useVClipStore.getState().probe(asset)).durationSec;
+		if (!durationSec) {
+			toast.error("영상 길이를 읽지 못해 조합에 넣지 못했습니다.");
+			return;
+		}
+		addItems(
+			[videoItem(asset, durationSec, choice())],
+			asset.label || basename(asset.originalPath),
+		);
 	};
+
+	const shownClips = clips.filter((clip) =>
+		matches(
+			query,
+			clip.label,
+			clip.note,
+			document?.assets.find((asset) => asset.id === clip.assetId)?.label,
+		),
+	);
+	const shownPhotos = board.images.filter((image) => matches(query, image.label, image.path));
+	const shownVideos = videos.filter((asset) => matches(query, asset.label, asset.originalPath));
 
 	return (
-		<div className={styles.mediaStage}>
-			<div className={styles.mediaInner} style={{ maxWidth: detailOpen ? 1120 : 900 }}>
-				<div className={styles.mediaSearchRow}>
-					<Search size={16} style={{ color: "var(--muted)", flexShrink: 0 }} />
-					<input
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						placeholder={t("mediaStage.searchPlaceholder")}
-					/>
-				</div>
-				<div className={styles.mediaCols}>
-					<div className={styles.mediaListCol}>
-						<div
-							className={styles.mediaGrid}
-							style={{ gridTemplateColumns: detailOpen ? "repeat(2,1fr)" : "repeat(3,1fr)" }}
-						>
-							{filtered.map((asset, i) => {
-								const transcription = transcriptions[asset.id] ?? {
-									assetId: asset.id,
-									status: "idle" as AssetTranscriptionStatus,
-								};
-								return (
-									<button
-										type="button"
-										key={asset.id}
-										draggable
-										className={`${styles.mediaCard}${
-											asset.id === selectedId ? ` ${styles.selected}` : ""
-										}`}
-										title={asset.originalPath}
-										onDragStart={(e) => {
-											e.dataTransfer.setData(ASSET_MIME, asset.id);
-											e.dataTransfer.effectAllowed = "copy";
-										}}
-										onClick={() => openDetail(asset)}
-									>
-										<div
-											className={styles.mediaThumb}
-											style={{ background: THUMB_GRADIENTS[i % THUMB_GRADIENTS.length] }}
-										>
-											<Film size={30} strokeWidth={1.8} />
-										</div>
-										<div className={styles.mediaCardMeta}>
-											{asset.id === selectedId ? (
-												<span
-													aria-hidden
-													style={{
-														width: 6,
-														height: 6,
-														borderRadius: "50%",
-														background: "var(--accent)",
-														flexShrink: 0,
-													}}
-												/>
-											) : null}
-											<div className={styles.body}>
-												<div className={styles.mediaCardName}>
-													{asset.label || basename(asset.originalPath)}
-												</div>
-												<div className={styles.mediaCardStats}>
-													<span className={styles.dur}>
-														{formatSeconds(asset.durationSec ?? 0)}
-													</span>
-													<span className={styles.size}>{formatBytes(asset.sizeBytes)}</span>
-												</div>
-											</div>
-											<TranscriptionStatusDot view={transcription} />
-										</div>
-									</button>
-								);
-							})}
-						</div>
-						{assets.length > 0 ? (
-							<div className={styles.mediaHint}>
-								<ArrowDown size={12} />
-								{t("mediaStage.dragHint")}
-							</div>
-						) : (
-							<div className={styles.mediaHint}>{t("mediaStage.emptyHint")}</div>
-						)}
-						<button
-							type="button"
-							className={styles.importBtn}
-							onClick={() => void handleImport()}
-							disabled={!projectId || busy}
-						>
-							<Plus size={14} />
-							{busy ? "미디어 준비 중…" : "전체 영상 추가"}
-						</button>
-						<div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-							<label>
-								<input
-									type="checkbox"
-									checked={appendOnImport}
-									onChange={(e) => setAppendOnImport(e.target.checked)}
-								/>{" "}
-								가져온 미디어를 전체 클립으로 타임라인에 추가
-							</label>
-							<label>
-								사진 클립 길이 (초){" "}
-								<input
-									aria-label="사진 클립 길이 (초)"
-									type="number"
-									min={0.5}
-									max={600}
-									step={0.5}
-									value={photoDuration}
-									onChange={(e) => setPhotoDuration(Number(e.target.value))}
-									style={{ width: 72, background: "var(--surface-2)", color: "var(--fg)" }}
-								/>
-							</label>
-							<button
-								type="button"
-								className={styles.importBtn}
-								onClick={() => void handleImport(true)}
-								disabled={
-									!projectId ||
-									busy ||
-									!Number.isFinite(photoDuration) ||
-									photoDuration < 0.5 ||
-									photoDuration > 600
-								}
-							>
-								<Plus size={14} /> 사진 추가
-							</button>
-							<p className={styles.mediaHint}>
-								긴 영상은 V.Clip에서 구간으로 나누고 Remotion 효과를 입혀 클립으로 만드세요. Audio를
-								넣었다면 남은 길이에 맞춰 구간을 고를 수 있습니다.
+		<div className={styles.root}>
+			<div className={styles.stage}>
+				<div className={styles.inner}>
+					<header className={styles.header}>
+						<div>
+							<h1>Media</h1>
+							<p className={styles.hint}>
+								V.Clip에서 나눈 클립과 사진·영상을 조합하고, 항목마다 Remotion 효과를 고릅니다.
+								Audio에 음악이나 나레이션이 있으면 조합을 그 길이에 맞출 수 있습니다.
 							</p>
 						</div>
+					</header>
+					<div className={styles.columns}>
+						<section className={styles.library} aria-label="소재">
+							<div className={styles.tabs} role="tablist" aria-label="소재 종류">
+								<LibraryTabButton
+									tab="clips"
+									current={tab}
+									onSelect={setTab}
+									icon={<Scissors size={14} />}
+									label={`V.Clip 클립 ${board.clips.length}`}
+								/>
+								<LibraryTabButton
+									tab="photos"
+									current={tab}
+									onSelect={setTab}
+									icon={<ImageIcon size={14} />}
+									label={`사진 ${board.images.length}`}
+								/>
+								<LibraryTabButton
+									tab="videos"
+									current={tab}
+									onSelect={setTab}
+									icon={<Film size={14} />}
+									label={`영상 ${videos.length}`}
+								/>
+							</div>
+							<div className={styles.search}>
+								<Search size={15} />
+								<input
+									value={query}
+									onChange={(event) => setQuery(event.target.value)}
+									placeholder={t("mediaStage.searchPlaceholder")}
+								/>
+							</div>
+
+							{tab === "clips" ? (
+								<>
+									<div className={styles.row}>
+										<button
+											type="button"
+											className={`${styles.button} ${styles.primary}`}
+											disabled={shownClips.length === 0}
+											onClick={() =>
+												addItems(
+													shownClips.map((clip) => clipItem(clip, choice())),
+													`클립 ${shownClips.length}개`,
+												)
+											}
+										>
+											<ListPlus size={15} />
+											모두 조합에 넣기
+										</button>
+										<button
+											type="button"
+											className={styles.button}
+											onClick={() => onOpenInVClip(null)}
+										>
+											<Scissors size={14} />
+											V.Clip에서 나누기
+										</button>
+									</div>
+									{clips.length === 0 ? (
+										<p className={styles.emptyNote}>
+											V.Clip에서 영상을 구간으로 나누면 여기에 모입니다. 나누기는 원본을 건드리지
+											않습니다.
+										</p>
+									) : (
+										<div className={styles.cards}>
+											{shownClips.map((clip) => (
+												<ClipCard
+													key={clip.id}
+													clip={clip}
+													asset={document?.assets.find((asset) => asset.id === clip.assetId)}
+													used={board.items.some((item) => item.clipId === clip.id)}
+													onAdd={() => addItems([clipItem(clip, choice())], "클립")}
+												/>
+											))}
+										</div>
+									)}
+								</>
+							) : tab === "photos" ? (
+								<>
+									<div className={styles.row}>
+										<button
+											type="button"
+											className={`${styles.button} ${styles.primary}`}
+											disabled={!projectId || busy}
+											onClick={() => void importPhotos()}
+										>
+											<Plus size={15} />
+											{busy ? "준비 중…" : "사진 추가"}
+										</button>
+										<label className={styles.inline}>
+											사진 길이 (초)
+											<input
+												type="number"
+												aria-label="사진 길이 (초)"
+												min={MIN_ITEM_SEC}
+												max={MAX_IMAGE_SEC}
+												step={0.5}
+												value={Number.isFinite(photoSec) ? photoSec : ""}
+												onChange={(event) => {
+													setPhotoSec(event.target.valueAsNumber);
+													if (event.target.valueAsNumber >= MIN_ITEM_SEC)
+														store(PHOTO_SEC_KEY, String(event.target.valueAsNumber));
+												}}
+											/>
+										</label>
+										<button
+											type="button"
+											className={styles.button}
+											disabled={shownPhotos.length === 0 || !validPhotoSec}
+											onClick={() =>
+												addItems(
+													shownPhotos.map((image) => imageItem(image, photoSec, choice())),
+													`사진 ${shownPhotos.length}장`,
+												)
+											}
+										>
+											<ListPlus size={15} />
+											모두 조합에 넣기
+										</button>
+									</div>
+									{board.images.length === 0 ? (
+										<p className={styles.emptyNote}>
+											사진은 원본 파일 그대로 두고, 조합에서 정한 길이와 효과로 적용할 때
+											만들어집니다.
+										</p>
+									) : (
+										<div className={styles.cards}>
+											{shownPhotos.map((image) => (
+												<PhotoCard
+													key={image.id}
+													image={image}
+													used={board.items.some((item) => item.imageId === image.id)}
+													disabled={!validPhotoSec}
+													onAdd={() => addItems([imageItem(image, photoSec, choice())], "사진")}
+												/>
+											))}
+										</div>
+									)}
+								</>
+							) : (
+								<>
+									<div className={styles.row}>
+										<button
+											type="button"
+											className={`${styles.button} ${styles.primary}`}
+											disabled={!projectId || busy}
+											onClick={() => void importVideos()}
+										>
+											<Plus size={15} />
+											{busy ? "준비 중…" : "영상 추가"}
+										</button>
+									</div>
+									{videos.length === 0 ? (
+										<p className={styles.emptyNote}>{t("mediaStage.emptyHint")}</p>
+									) : (
+										<>
+											<div className={styles.cards}>
+												{shownVideos.map((asset) => (
+													<VideoCard
+														key={asset.id}
+														asset={asset}
+														used={board.items.some(
+															(item) => item.kind === "video" && item.assetId === asset.id,
+														)}
+														onAdd={() => void addVideo(asset)}
+														onSplit={() => onOpenInVClip(asset.id)}
+														onTranscript={() => setDetailId(asset.id)}
+														onAddToTimeline={() =>
+															void addSelectedAssetToTimeline(asset, onAddToTimeline, (label) =>
+																toast.success(t("mediaStage.addedToTimeline", { label })),
+															).catch(() => undefined)
+														}
+													/>
+												))}
+											</div>
+											<p className={styles.hint}>{t("mediaStage.dragHint")}</p>
+										</>
+									)}
+								</>
+							)}
+						</section>
+						<MediaComposition
+							defaultEffect={defaultEffect}
+							onDefaultEffect={(effect) => {
+								setDefaultEffect(effect);
+								store(EFFECT_KEY, effect);
+							}}
+						/>
 					</div>
-
-					{detailOpen && selected ? (
-						<div className={styles.mediaDetail}>
-							<div
-								style={{
-									display: "flex",
-									alignItems: "flex-start",
-									justifyContent: "space-between",
-									gap: 10,
-									marginBottom: 4,
-								}}
-							>
-								<h2
-									style={{
-										margin: 0,
-										fontSize: 16.5,
-										fontWeight: 700,
-										color: "var(--fg-emphasis)",
-										letterSpacing: "-0.01em",
-									}}
-								>
-									{t("mediaStage.sourceTranscript")}
-								</h2>
-								<button
-									type="button"
-									title={t("mediaStage.close")}
-									aria-label={t("mediaStage.close")}
-									onClick={() => setDetailOpen(false)}
-									style={{
-										width: 26,
-										height: 26,
-										display: "grid",
-										placeItems: "center",
-										borderRadius: 8,
-										color: "var(--muted)",
-										background: "transparent",
-										border: 0,
-										cursor: "pointer",
-										flexShrink: 0,
-									}}
-								>
-									<X size={15} />
-								</button>
-							</div>
-							<div
-								style={{
-									fontSize: 12,
-									color: "var(--muted)",
-									marginBottom: 10,
-									whiteSpace: "nowrap",
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-								}}
-							>
-								{selected.label || basename(selected.originalPath)}
-							</div>
-							<button
-								type="button"
-								onClick={() => onOpenInVClip(selected.id)}
-								style={{
-									width: "100%",
-									height: 36,
-									display: "inline-flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: 7,
-									marginBottom: 8,
-									borderRadius: 9,
-									border: "1px solid var(--border)",
-									background: "var(--surface-2)",
-									color: "var(--fg)",
-									fontSize: 12.5,
-									fontWeight: 600,
-									cursor: "pointer",
-								}}
-							>
-								<ScanSearch size={14} />
-								V.Clip에서 구간 나누기
-							</button>
-							<button
-								type="button"
-								onClick={addSelectedToTimeline}
-								style={{
-									width: "100%",
-									height: 36,
-									display: "inline-flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: 7,
-									marginBottom: 16,
-									borderRadius: 9,
-									border: "1px solid var(--accent)",
-									background: "var(--accent)",
-									color: "var(--accent-on)",
-									fontSize: 12.5,
-									fontWeight: 650,
-									cursor: "pointer",
-								}}
-							>
-								<Plus size={14} />
-								원본 전체를 효과 없이 추가
-							</button>
-
-							<div style={{ marginBottom: 16 }}>
-								<span
-									style={{
-										display: "inline-flex",
-										alignItems: "center",
-										gap: 6,
-										padding: "5px 10px 5px 8px",
-										borderRadius: 9999,
-										// A silent recording reads as a verdict about the media, not as a
-										// broken run, so it keeps the neutral accent rather than the danger
-										// red the engine failures get (issue #628).
-										background:
-											selectedTranscription.status === "failed" &&
-											!isSilentFailure(selectedTranscription)
-												? "var(--danger-soft)"
-												: selectedTranscription.status === "ready"
-													? "var(--success-soft)"
-													: "var(--accent-soft)",
-										color:
-											selectedTranscription.status === "failed" &&
-											!isSilentFailure(selectedTranscription)
-												? "var(--danger)"
-												: selectedTranscription.status === "ready"
-													? "var(--success)"
-													: "var(--accent)",
-										fontSize: 11.5,
-										fontWeight: 600,
-									}}
-								>
-									<TranscriptionStatusDot view={selectedTranscription} size={5} />
-									{transcriptionLabel(selectedTranscription)}
-								</span>
-								{/* The language whisper resolved on the first chunk, which every later
-								    chunk was then pinned to. Its only pill used to live in the v3 left
-								    panel's transcript modal, which nothing mounted, so the value was
-								    reaching the document and being displayed nowhere. It belongs next to
-								    "Regenerate as" below in any case: that selector is the control
-								    you set BECAUSE of what was detected. */}
-								{transcript?.language && transcript.language !== "auto" ? (
-									<span
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											marginLeft: 8,
-											padding: "5px 10px",
-											borderRadius: 9999,
-											background: "var(--success-soft)",
-											color: "var(--success)",
-											fontSize: 11.5,
-											fontWeight: 600,
-										}}
-									>
-										{t("mediaStage.detectedLanguage", {
-											language: languageLabel(transcript.language, locale),
-										})}
-									</span>
-								) : null}
-							</div>
-
-							{/* Renders itself away — spacing included — unless the run reports progress. */}
-							<TranscriptionProgressBar view={selectedTranscription} />
-
-							{selectedTranscription.failure ? (
-								<p
-									style={{
-										margin: "-8px 0 16px",
-										fontSize: 11.5,
-										lineHeight: 1.5,
-										color: "var(--muted)",
-									}}
-								>
-									{selectedTranscription.failure.kind === "error"
-										? selectedTranscription.failure.message
-										: t("mediaStage.noAudioTrackHint")}
-								</p>
-							) : null}
-
-							<div style={{ marginBottom: 12 }}>
-								<div
-									style={{
-										fontSize: 11.5,
-										fontWeight: 600,
-										color: "var(--fg-2)",
-										marginBottom: 6,
-									}}
-								>
-									{t("mediaStage.regenerateAs")}
-								</div>
-								<div style={{ display: "flex", gap: 8 }}>
-									<select
-										value={lang}
-										onChange={(e) => setLang(e.target.value as TranscriptLanguageCode)}
-										style={{
-											flex: 1,
-											minWidth: 0,
-											height: 36,
-											padding: "0 10px",
-											borderRadius: 9,
-											border: "1px solid var(--border)",
-											background: "var(--surface-2)",
-											color: "var(--fg)",
-											fontSize: 12.5,
-											fontWeight: 500,
-											outline: "none",
-										}}
-									>
-										{regenLanguageOptions.map(({ code, label }) => (
-											<option key={code} value={code}>
-												{label}
-											</option>
-										))}
-									</select>
-									<button
-										type="button"
-										title={t("mediaStage.regenerate")}
-										aria-label={t("mediaStage.regenerate")}
-										disabled={selectedBusy}
-										onClick={() => void requestTranscription(selected.id, lang)}
-										style={{
-											width: 36,
-											height: 36,
-											flexShrink: 0,
-											display: "grid",
-											placeItems: "center",
-											borderRadius: 9,
-											color: "var(--fg-2)",
-											background: "var(--surface-2)",
-											border: "1px solid var(--border)",
-											cursor: selectedBusy ? "not-allowed" : "pointer",
-											opacity: selectedBusy ? 0.6 : 1,
-										}}
-									>
-										<RotateCw size={14} className={selectedBusy ? "animate-spin" : undefined} />
-									</button>
-								</div>
-							</div>
-
-							<div
-								style={{
-									padding: "16px",
-									border: "1px solid var(--border)",
-									borderRadius: 12,
-									background: "var(--surface)",
-									fontSize: 12.5,
-									lineHeight: 1.7,
-									color: "var(--fg-2)",
-									maxHeight: 360,
-									overflowY: "auto",
-								}}
-							>
-								{transcript ? (
-									(transcript.segments ?? [])
-										.map((seg) => (seg as { text?: string }).text ?? "")
-										.join(" ") || t("mediaStage.transcriptEmpty")
-								) : (
-									<span style={{ color: "var(--muted)" }}>
-										{selectedBusy
-											? transcriptionLabel(selectedTranscription)
-											: isSilentFailure(selectedTranscription)
-												? t("mediaStage.noAudioTrackHint")
-												: selectedTranscription.status === "failed"
-													? t("mediaStage.generationFailedHint")
-													: t("mediaStage.notGeneratedHint")}
-									</span>
-								)}
-							</div>
-						</div>
-					) : null}
 				</div>
 			</div>
+			{detail ? <MediaTranscriptPanel asset={detail} onClose={() => setDetailId(null)} /> : null}
 		</div>
+	);
+}
+
+function LibraryTabButton({
+	tab,
+	current,
+	onSelect,
+	icon,
+	label,
+}: {
+	tab: LibraryTab;
+	current: LibraryTab;
+	onSelect: (tab: LibraryTab) => void;
+	icon: React.ReactNode;
+	label: string;
+}) {
+	return (
+		<button type="button" role="tab" aria-selected={tab === current} onClick={() => onSelect(tab)}>
+			{icon}
+			{label}
+		</button>
+	);
+}
+
+function ClipCard({
+	clip,
+	asset,
+	used,
+	onAdd,
+}: {
+	clip: AxcutMediaBoardClip;
+	asset: AxcutAsset | undefined;
+	used: boolean;
+	onAdd: () => void;
+}) {
+	const length = clip.endSec - clip.startSec;
+	const thumbnail = useThumbnail(asset?.originalPath ?? null, clip.startSec + length / 2);
+	const range = `${formatSec(clip.startSec)}–${formatSec(clip.endSec)}`;
+	return (
+		<article className={styles.card} data-used={used} aria-label={`클립 ${clip.label}`}>
+			<div className={styles.cardThumb}>
+				{thumbnail ? <img src={thumbnail} alt="" draggable={false} /> : <Film size={24} />}
+				{clip.score !== undefined ? <span className={styles.badge}>{clip.score}</span> : null}
+				<span className={styles.lengthBadge}>{length.toFixed(1)}초</span>
+			</div>
+			<div className={styles.cardBody}>
+				<strong title={clip.note || clip.label}>{clip.note || range}</strong>
+				<span title={asset?.originalPath}>
+					{asset?.label ?? "원본 없음"} · {range}
+				</span>
+				<div className={styles.cardActions}>
+					<button type="button" className={styles.primary} disabled={!asset} onClick={onAdd}>
+						<SquarePlus size={13} />
+						{used ? "한 번 더 넣기" : "조합에 넣기"}
+					</button>
+					<button
+						type="button"
+						aria-label={`${range} 클립 삭제`}
+						title="클립 목록에서 지웁니다. 조합에 넣은 항목은 남습니다."
+						onClick={() =>
+							void mutateDocument((document) => removeBoardClip(document, clip.id), {
+								history: true,
+							})
+						}
+					>
+						<Trash2 size={13} />
+					</button>
+				</div>
+			</div>
+		</article>
+	);
+}
+
+function PhotoCard({
+	image,
+	used,
+	disabled,
+	onAdd,
+}: {
+	image: AxcutMediaBoardImage;
+	used: boolean;
+	disabled: boolean;
+	onAdd: () => void;
+}) {
+	return (
+		<article className={styles.card} data-used={used} aria-label={`사진 ${image.label}`}>
+			<div className={styles.cardThumb}>
+				<img src={toFileUrl(image.path)} alt="" draggable={false} />
+			</div>
+			<div className={styles.cardBody}>
+				<strong title={image.path}>{image.label}</strong>
+				<span>{image.width && image.height ? `${image.width}×${image.height}` : "사진"}</span>
+				<div className={styles.cardActions}>
+					<button type="button" className={styles.primary} disabled={disabled} onClick={onAdd}>
+						<SquarePlus size={13} />
+						{used ? "한 번 더 넣기" : "조합에 넣기"}
+					</button>
+					<button
+						type="button"
+						aria-label={`${image.label} 사진 삭제`}
+						title="사진과, 조합에서 이 사진을 쓰는 항목을 지웁니다."
+						onClick={() =>
+							void mutateDocument((document) => removeBoardImage(document, image.id), {
+								history: true,
+							})
+						}
+					>
+						<Trash2 size={13} />
+					</button>
+				</div>
+			</div>
+		</article>
+	);
+}
+
+function VideoCard({
+	asset,
+	used,
+	onAdd,
+	onSplit,
+	onTranscript,
+	onAddToTimeline,
+}: {
+	asset: AxcutAsset;
+	used: boolean;
+	onAdd: () => void;
+	onSplit: () => void;
+	onTranscript: () => void;
+	onAddToTimeline: () => void;
+}) {
+	const transcriptions = useAssetTranscriptions();
+	const thumbnail = useThumbnail(asset.originalPath, Math.min(1, (asset.durationSec ?? 2) / 2));
+	const name = asset.label || basename(asset.originalPath);
+	const transcription = transcriptions[asset.id] ?? {
+		assetId: asset.id,
+		status: "idle" as AssetTranscriptionStatus,
+	};
+	return (
+		<article
+			className={styles.card}
+			data-used={used}
+			aria-label={`영상 ${name}`}
+			draggable
+			onDragStart={(event) => {
+				event.dataTransfer.setData(ASSET_MIME, asset.id);
+				event.dataTransfer.effectAllowed = "copy";
+			}}
+		>
+			<div className={styles.cardThumb}>
+				{thumbnail ? <img src={thumbnail} alt="" draggable={false} /> : <Film size={24} />}
+				<span className={styles.lengthBadge}>{formatSeconds(asset.durationSec ?? 0)}</span>
+			</div>
+			<div className={styles.cardBody}>
+				<strong title={asset.originalPath}>{name}</strong>
+				<span className={styles.meta}>
+					{formatBytes(asset.sizeBytes)}
+					<TranscriptionStatusDot view={transcription} />
+				</span>
+				<div className={styles.cardActions}>
+					<button type="button" className={styles.primary} onClick={onAdd}>
+						<SquarePlus size={13} />
+						{used ? "한 번 더 넣기" : "전체 넣기"}
+					</button>
+					<button
+						type="button"
+						aria-label={`${name} V.Clip에서 나누기`}
+						title="V.Clip에서 나누기"
+						onClick={onSplit}
+					>
+						<Scissors size={13} />
+					</button>
+					<button
+						type="button"
+						aria-label={`${name} 대본`}
+						title="대본 보기"
+						onClick={onTranscript}
+					>
+						<FileText size={13} />
+					</button>
+					<button
+						type="button"
+						aria-label={`${name} 타임라인에 바로 추가`}
+						title="효과 없이 타임라인 끝에 바로 추가"
+						onClick={onAddToTimeline}
+					>
+						<Plus size={13} />
+					</button>
+				</div>
+			</div>
+		</article>
 	);
 }

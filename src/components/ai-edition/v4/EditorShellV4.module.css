@@ -724,131 +724,8 @@
 	overflow: hidden;
 }
 
-/* ─── MEDIA STAGE ──────────────────────────────────────────────────── */
-.mediaStage {
-	position: absolute;
-	inset: 0;
-	display: flex;
-	flex-direction: column;
-	padding: 32px 48px;
-	overflow: hidden;
-}
-.mediaInner {
-	width: 100%;
-	margin: 0 auto;
-	display: flex;
-	flex-direction: column;
-	min-height: 0;
-	flex: 1;
-}
-.mediaSearchRow {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	margin-bottom: 16px;
-}
-.mediaSearchRow input {
-	flex: 1;
-	min-width: 0;
-	padding: 10px 14px;
-	border: 1px solid var(--border);
-	border-radius: 10px;
-	background: var(--surface-1);
-	outline: none;
-	font-size: 13px;
-	color: var(--fg-2);
-	font-family: var(--font-display);
-}
-.mediaCols {
-	display: flex;
-	gap: 24px;
-	min-height: 0;
-	flex: 1;
-	overflow: hidden;
-}
-.mediaListCol {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	min-height: 0;
-}
-.mediaGrid {
-	overflow-y: auto;
-	min-height: 0;
-	display: grid;
-	gap: 14px;
-	padding-bottom: 14px;
-	scrollbar-width: thin;
-	scrollbar-color: var(--border-hi) transparent;
-}
-.mediaCard {
-	display: flex;
-	flex-direction: column;
-	padding: 0;
-	border: 1.5px solid var(--border);
-	border-radius: 12px;
-	background: var(--surface);
-	overflow: hidden;
-	cursor: grab;
-	text-align: left;
-	transition: border-color var(--motion-fast) var(--ease);
-}
-.mediaCard:hover {
-	border-color: var(--border-hi);
-}
-.mediaCard.selected {
-	border-color: var(--accent);
-}
-.mediaThumb {
-	position: relative;
-	height: 84px;
-	display: grid;
-	place-items: center;
-	color: rgba(255, 255, 255, 0.9);
-}
-.mediaCardMeta {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	padding: 10px 12px;
-}
-.mediaCardMeta .body {
-	min-width: 0;
-	flex: 1;
-}
-.mediaCardName {
-	font-size: 12.5px;
-	font-weight: 600;
-	color: var(--fg);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.mediaCardStats {
-	display: flex;
-	justify-content: space-between;
-	gap: 8px;
-}
-.mediaCardStats .dur {
-	font-family: var(--font-mono);
-	font-size: 10.5px;
-	color: var(--muted);
-}
-.mediaCardStats .size {
-	font-family: var(--font-mono);
-	font-size: 10.5px;
-	color: var(--muted);
-}
-.mediaHint {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 7px;
-	padding: 7px 0 3px;
-	color: var(--meta);
-	font-size: 11.5px;
-}
+/* ─── IMPORT BUTTON ─────────────────────────────────────────────────── */
+/* The dashed full-width button the manual subtitle pane uses. */
 .importBtn {
 	display: flex;
 	align-items: center;
@@ -869,20 +746,6 @@
 	border-color: var(--accent);
 	color: var(--accent);
 	background: var(--accent-wash);
-}
-.mediaDetail {
-	width: 400px;
-	flex-shrink: 0;
-	display: flex;
-	flex-direction: column;
-	min-height: 0;
-	padding: 20px 22px;
-	background: var(--surface-1);
-	border: 1px solid var(--border);
-	border-radius: 16px;
-	overflow-y: auto;
-	scrollbar-width: thin;
-	scrollbar-color: var(--border-hi) transparent;
 }
 
 /* ─── REC STAGE ────────────────────────────────────────────────────── */

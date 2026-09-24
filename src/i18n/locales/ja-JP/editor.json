@@ -395,7 +395,19 @@
 		"disconnect": "接続を解除",
 		"cancel": "キャンセル",
 		"save": "保存",
-		"saveAndUse": "保存して使用"
+		"saveAndUse": "保存して使用",
+		"ollama": {
+			"title": "ローカルビジョンモデル (Ollama)",
+			"description": "V.Clip が映像区間の採点と説明に使います。フレームはこのコンピューターの外に出ません。",
+			"modelLabel": "モデル",
+			"withoutAi": "AI なし（画質スコアのみ）",
+			"refresh": "再確認",
+			"checking": "Ollama を確認中…",
+			"unavailable": "{{url}} の Ollama に接続できません。V.Clip は画質スコアのみで選びます。",
+			"noModels": "{{url}} にビジョンモデルがありません。「ollama pull qwen3-vl:4b」でインストールすると、スコアとシーンの説明を得られます。",
+			"off": "V.Clip は画質スコアのみで選びます。ビジョンモデル {{count}} 個がインストール済みです。",
+			"ready": "{{url}} に接続済み · ビジョンモデル {{count}} 個。小さいモデルほど高速です。"
+		}
 	},
 	"cpuCompositor": {
 		"notice": "対応 GPU がないため CPU で描画しています。再生が遅くなります。",

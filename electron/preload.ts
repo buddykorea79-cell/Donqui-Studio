@@ -288,6 +288,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	vclipAnalyzeWindow: (request: import("../src/lib/vclip/contract").VClipWindowRequest) =>
 		ipcRenderer.invoke("vclip-analyze-window", request),
 	vclipCancel: (jobId: string) => ipcRenderer.invoke("vclip-cancel", jobId),
+	vclipThumbnail: (sourcePath: string, atSec: number) =>
+		ipcRenderer.invoke("vclip-thumbnail", sourcePath, atSec),
+	openVideoFilesPicker: () => ipcRenderer.invoke("open-video-files-picker"),
+	openImageFilesPicker: () => ipcRenderer.invoke("open-image-files-picker"),
+	createImageClip: (imagePath: string, duration: number) =>
+		ipcRenderer.invoke("create-image-clip", imagePath, duration),
 	openVideoFilePicker: () => {
 		return ipcRenderer.invoke("open-video-file-picker");
 	},

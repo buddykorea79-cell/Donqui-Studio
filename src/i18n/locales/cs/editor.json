@@ -395,7 +395,19 @@
 		"disconnect": "Odpojit",
 		"cancel": "Zrušit",
 		"save": "Uložit",
-		"saveAndUse": "Uložit a použít"
+		"saveAndUse": "Uložit a použít",
+		"ollama": {
+			"title": "Místní model vidění (Ollama)",
+			"description": "V.Clip ho používá k hodnocení a popisu úseků záznamu. Snímky nikdy neopustí tento počítač.",
+			"modelLabel": "Model",
+			"withoutAi": "Bez AI (jen kvalita obrazu)",
+			"refresh": "Zkontrolovat znovu",
+			"checking": "Kontroluji Ollama…",
+			"unavailable": "Ollama na adrese {{url}} není dostupná. V.Clip hodnotí jen kvalitu obrazu.",
+			"noModels": "Na adrese {{url}} není nainstalovaný žádný model vidění. Spusťte „ollama pull qwen3-vl:4b“ a získáte hodnocení i popisy scén.",
+			"off": "V.Clip hodnotí jen kvalitu obrazu. Nainstalované modely vidění: {{count}}.",
+			"ready": "Připojeno k {{url}} · modely vidění: {{count}}. Menší modely jsou rychlejší."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "Běží bez kompatibilního GPU, takže renderování probíhá na CPU a přehrávání je pomalejší.",

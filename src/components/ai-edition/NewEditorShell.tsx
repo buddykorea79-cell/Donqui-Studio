@@ -1514,9 +1514,10 @@ export function NewEditorShell() {
 		}
 		setMode(next);
 	};
-	const showTimeline = mode !== "rec" && mode !== "audio";
-	// Media and V.Clip add clips rather than edit them: a short strip shows them landing.
-	const compactTimeline = mode === "media" || mode === "vclip";
+	// V.Clip only splits footage into Media's bin; nothing it does lands on the timeline.
+	const showTimeline = mode !== "rec" && mode !== "audio" && mode !== "vclip";
+	// Media adds clips rather than edits them: a short strip shows them landing.
+	const compactTimeline = mode === "media";
 	const timelineRow = compactTimeline ? "188px" : `${timelineHeightPx}px`;
 	const bodyColumns = mode === "edit" && chatOpen ? `${chatWidthPx}px 1fr` : "1fr";
 
@@ -1744,12 +1745,15 @@ export function NewEditorShell() {
 							onNewProject={() => setNewProjectOpen(true)}
 						/>
 					) : mode === "vclip" ? (
-						<VClipStage onAddToTimeline={handleDropAsset} onContinue={() => changeMode("media")} />
+						<VClipStage
+							onContinue={() => changeMode("media")}
+							onOpenAiSettings={() => openDialog("providers")}
+						/>
 					) : mode === "media" ? (
 						<MediaStage
 							onAddToTimeline={handleDropAsset}
 							onOpenInVClip={(assetId) => {
-								useVClipStore.getState().selectSource(assetId);
+								useVClipStore.getState().focusSource(assetId);
 								changeMode("vclip");
 							}}
 						/>

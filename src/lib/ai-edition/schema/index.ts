@@ -584,6 +584,65 @@ export const audioTrackSchema = endGteStart(
 // Round-trip through the migration must be lossless for now.
 export const legacyEditorSchema = z.object({}).passthrough().nullable().default(null);
 
+// Donqui Studio's media board. V.Clip splits footage into CLIPS — ranges of a video asset,
+// nothing rendered — and Media composes clips, photos and whole videos into ITEMS, each with
+// its own Remotion effect, which are rendered onto the timeline only when the user applies
+// them. Optional and absent on every document written before it: additive, so no schema
+// bump, and an older build simply drops the key on save.
+export const mediaBoardClipSchema = endGteStart(
+	z.object({
+		id: z.string().min(1),
+		assetId: z.string().min(1),
+		startSec: z.number().nonnegative(),
+		endSec: z.number().nonnegative(),
+		label: z.string().default(""),
+		/** V.Clip's score for the window it came from; absent for a range cut by hand. */
+		score: z.number().min(0).max(100).optional(),
+		/** What the vision model saw there, to choose clips by. */
+		note: z.string().optional(),
+	}),
+	"endSec",
+	"startSec",
+);
+
+/** A photo, by its original file: it is rendered at whatever length the composition gives it. */
+export const mediaBoardImageSchema = z.object({
+	id: z.string().min(1),
+	path: z.string().min(1),
+	label: z.string().default(""),
+	width: z.number().int().positive().optional(),
+	height: z.number().int().positive().optional(),
+});
+
+export const mediaBoardItemSchema = endGteStart(
+	z.object({
+		id: z.string().min(1),
+		kind: z.enum(["clip", "video", "image"]),
+		/** The video asset a clip or a whole video plays from. */
+		assetId: z.string().min(1).optional(),
+		/** The photo an image item shows. */
+		imageId: z.string().min(1).optional(),
+		/** The bin clip a clip item was taken from. Its range is copied, so fitting the item to
+		 *  the audio never changes the clip. */
+		clipId: z.string().min(1).optional(),
+		/** Source range for a clip or video; 0 to its length for a photo. */
+		startSec: z.number().nonnegative(),
+		endSec: z.number().nonnegative(),
+		label: z.string().default(""),
+		/** A clip-effect id, or "random", which `seed` resolves the same way every time. */
+		effect: z.string().default("none"),
+		seed: z.string().default(""),
+	}),
+	"endSec",
+	"startSec",
+);
+
+export const mediaBoardSchema = z.object({
+	clips: z.array(mediaBoardClipSchema).default([]),
+	images: z.array(mediaBoardImageSchema).default([]),
+	items: z.array(mediaBoardItemSchema).default([]),
+});
+
 const documentSchemaShape = z.object({
 	schemaVersion: z.literal(axcutSchemaVersion),
 	project: z.object({
@@ -610,6 +669,7 @@ const documentSchemaShape = z.object({
 	// before this loads unchanged; an older build simply strips the key on save.
 	audioTracks: z.array(audioTrackSchema).default([]),
 	legacyEditor: legacyEditorSchema.nullable().default(null),
+	mediaBoard: mediaBoardSchema.optional(),
 });
 
 // P4 — v3 documents carried a single project-level `cameraTrack` (one project
@@ -1089,6 +1149,10 @@ export type AxcutZoomRegion = z.infer<typeof zoomRegionSchema>;
 export type AxcutCameraTrack = z.infer<typeof cameraTrackSchema>;
 export type AxcutAudioTrack = z.infer<typeof audioTrackSchema>;
 export type AxcutLegacyEditor = z.infer<typeof legacyEditorSchema>;
+export type AxcutMediaBoard = z.infer<typeof mediaBoardSchema>;
+export type AxcutMediaBoardClip = z.infer<typeof mediaBoardClipSchema>;
+export type AxcutMediaBoardImage = z.infer<typeof mediaBoardImageSchema>;
+export type AxcutMediaBoardItem = z.infer<typeof mediaBoardItemSchema>;
 export type AxcutDocument = z.infer<typeof documentSchema>;
 export type AxcutDocumentInput = z.input<typeof documentSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;

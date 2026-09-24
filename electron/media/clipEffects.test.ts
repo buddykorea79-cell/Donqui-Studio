@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CreateClipEffectRequest } from "../../src/lib/clip-effects/catalog";
 import { clipEffectCacheKey, createClipEffect, validateClipEffectRequest } from "./clipEffects";
-import { parseMediaRange, serveClipSource } from "./clipEffectsSource";
+import { clipSourceContentType, parseMediaRange, serveClipSource } from "./clipEffectsSource";
 
 let root: string;
 let request: CreateClipEffectRequest;
@@ -43,6 +43,37 @@ describe("effect inputs and content cache", () => {
 			validateClipEffectRequest({ ...request, ...change } as CreateClipEffectRequest),
 		).toThrow();
 	});
+	it("takes a photo or a video as the source, and nothing else", () => {
+		expect(() => validateClipEffectRequest({ ...request, sourceKind: "image" })).not.toThrow();
+		expect(() => validateClipEffectRequest({ ...request, sourceKind: "video" })).not.toThrow();
+		expect(() =>
+			validateClipEffectRequest({
+				...request,
+				sourceKind: "audio",
+			} as unknown as CreateClipEffectRequest),
+		).toThrow("Unknown clip source kind");
+	});
+	it("keeps a video's cache key as it was, and gives a photo its own", async () => {
+		const video = await clipEffectCacheKey(request);
+		expect(await clipEffectCacheKey({ ...request, sourceKind: "video" })).toBe(video);
+		// The key renders were stored under before photos could take an effect.
+		const legacy = createHash("sha256")
+			.update(
+				JSON.stringify({
+					version: 2,
+					fps: 30,
+					startMs: 250,
+					endMs: 1250,
+					effect: "zoom-in",
+					width: 320,
+					height: 180,
+				}),
+			)
+			.update("0123456789")
+			.digest("hex");
+		expect(video).toBe(legacy);
+		expect(await clipEffectCacheKey({ ...request, sourceKind: "image" })).not.toBe(video);
+	});
 	it("invalidates cache on range, effect, and changed content at the same path", async () => {
 		const original = await clipEffectCacheKey(request);
 		expect(await clipEffectCacheKey(request)).toBe(original);
@@ -54,6 +85,14 @@ describe("effect inputs and content cache", () => {
 });
 
 describe("local clip source serving", () => {
+	it("tells the headless browser what kind of file it is", () => {
+		expect(clipSourceContentType("C:/footage/DJI_0017.MP4")).toBe("video/mp4");
+		expect(clipSourceContentType("/tmp/screen.webm")).toBe("video/webm");
+		expect(clipSourceContentType("C:/photos/SEA.JPG")).toBe("image/jpeg");
+		expect(clipSourceContentType("/photos/a.png")).toBe("image/png");
+		expect(clipSourceContentType("/photos/a.webp")).toBe("image/webp");
+		expect(clipSourceContentType("/footage/a.mov")).toBe("video/mp4");
+	});
 	it.each([
 		"bytes=10-",
 		"bytes=3-1",

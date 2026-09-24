@@ -395,7 +395,19 @@
 		"disconnect": "Ngắt kết nối",
 		"cancel": "Hủy",
 		"save": "Lưu",
-		"saveAndUse": "Lưu và dùng"
+		"saveAndUse": "Lưu và dùng",
+		"ollama": {
+			"title": "Mô hình thị giác cục bộ (Ollama)",
+			"description": "V.Clip dùng nó để chấm điểm và mô tả các đoạn phim. Khung hình không bao giờ rời khỏi máy tính này.",
+			"modelLabel": "Mô hình",
+			"withoutAi": "Không dùng AI (chỉ chất lượng hình ảnh)",
+			"refresh": "Kiểm tra lại",
+			"checking": "Đang kiểm tra Ollama…",
+			"unavailable": "Không thể kết nối tới Ollama tại {{url}}. V.Clip chỉ chấm điểm chất lượng hình ảnh.",
+			"noModels": "Chưa cài mô hình thị giác nào tại {{url}}. Chạy \"ollama pull qwen3-vl:4b\" để nhận điểm và mô tả cảnh.",
+			"off": "V.Clip chỉ chấm điểm chất lượng hình ảnh. Đã cài {{count}} mô hình thị giác.",
+			"ready": "Đã kết nối {{url}} · {{count}} mô hình thị giác. Mô hình càng nhỏ càng nhanh."
+		}
 	},
 	"cpuCompositor": {
 		"notice": "Không có GPU tương thích — kết xuất trên CPU nên phát lại chậm hơn.",

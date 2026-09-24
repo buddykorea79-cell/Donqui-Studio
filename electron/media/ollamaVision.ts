@@ -76,7 +76,8 @@ const proposalShape = z.looseObject({
 	category: z.string().optional(),
 	description: z.string().optional(),
 	caption: z.string().optional(),
-	tags: z.array(z.string()).optional(),
+	// Without a schema a model may list its tags in one string: "water, building".
+	tags: z.union([z.array(z.string()), z.string()]).optional(),
 });
 
 /** Constrains the model's sampling to the answer's shape (Ollama structured outputs). */
@@ -192,6 +193,11 @@ export async function analyzeSegmentFrames(
 					content: segmentPrompt(request.title, request.durationSec),
 					images: request.frames.map((frame) => frame.toString("base64")),
 				},
+				// The answer is started for the model, which it continues. Qwen3-VL on Ollama 0.34
+				// ignores `think: false` and reasons past `num_predict`, leaving neither `content`
+				// nor `thinking` with the object (measured: every window of three DJI clips). A
+				// reply that is already under way is answered directly — in ~1.3 s, not 4 s.
+				{ role: "assistant", content: "{" },
 			],
 			format: PROPOSAL_JSON_SCHEMA,
 			stream: false,
@@ -206,7 +212,19 @@ export async function analyzeSegmentFrames(
 			`Ollama returned HTTP ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
 		);
 	}
-	return parseProposal(chatSchema.parse(await response.json()).message);
+	return parseProposal(withPrefill(chatSchema.parse(await response.json()).message));
+}
+
+/**
+ * The reply to a prefilled `{`: with a schema Ollama returns the whole object, without one only
+ * what follows the brace. Either way the object comes back whole; an empty reply stays empty.
+ */
+export function withPrefill(message: { content: string; thinking?: string | null }): {
+	content: string;
+	thinking?: string | null;
+} {
+	const content = message.content.trimStart();
+	return content && !content.startsWith("{") ? { ...message, content: `{${content}` } : message;
 }
 
 function stripCodeFences(text: string): string {
@@ -284,7 +302,10 @@ export function parseProposal(message: {
 		: "general";
 	const tags = [
 		...new Set(
-			(shape.data.tags ?? [])
+			(typeof shape.data.tags === "string"
+				? shape.data.tags.split(/[,#\s]+/)
+				: (shape.data.tags ?? [])
+			)
 				.map((tag) => clip(tag, 20).toLowerCase())
 				.filter((tag) => tag.length > 0),
 		),

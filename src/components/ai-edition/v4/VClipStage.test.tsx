@@ -6,22 +6,11 @@ import { type AxcutDocument, createAudioTrack, createEmptyDocument } from "@/lib
 import { useProjectStore } from "@/lib/ai-edition/store/projectStore";
 import type { VClipWindowAnalysis, VClipWindowRequest } from "@/lib/vclip/contract";
 import { useVClipStore } from "@/lib/vclip/store";
+import { useVisionModelStore } from "@/lib/vclip/visionModels";
 import { VClipStage } from "./VClipStage";
 
-const mocks = vi.hoisted(() => ({ addEffectClip: vi.fn(), probeDuration: vi.fn() }));
-vi.mock("@/lib/clip-effects/addEffectClip", () => ({ addEffectClip: mocks.addEffectClip }));
-vi.mock("@/lib/ai-edition/timeline/duration", () => ({
-	probeVideoDuration: mocks.probeDuration,
-	probeVideoDimensions: mocks.probeDuration,
-}));
-vi.mock("./ClipPreview", () => ({
-	ClipPreview: (props: { effect: string; startMs: number; endMs: number }) => (
-		<div data-testid="clip-preview">
-			{props.effect}:{props.startMs}:{props.endMs}
-		</div>
-	),
-}));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/native/client", () => ({ nativeBridgeClient: { aiEdition: {} } }));
 
 const drone = {
 	id: "drone",
@@ -30,27 +19,42 @@ const drone = {
 	originalPath: "C:/footage/DJI_0017.MP4",
 	cameraTrack: null,
 };
+const beach = {
+	id: "beach",
+	kind: "video" as const,
+	label: "BEACH.MP4",
+	originalPath: "C:/footage/BEACH.MP4",
+	cameraTrack: null,
+};
 const api = {
 	vclipListModels: vi.fn(),
 	vclipProbe: vi.fn(),
 	vclipAnalyzeWindow: vi.fn(),
 	vclipCancel: vi.fn(),
-	openVideoFilePicker: vi.fn(),
+	vclipThumbnail: vi.fn(),
+	openVideoFilesPicker: vi.fn(),
 };
-const onAdd = vi.fn(async () => undefined);
+const save = vi.fn(async (document: AxcutDocument, _options: { history: boolean }) => {
+	useProjectStore.setState({ document });
+	return true;
+});
+const onContinue = vi.fn();
+const onOpenAiSettings = vi.fn();
 const initialVClip = useVClipStore.getState();
+const initialVision = useVisionModelStore.getState();
 const initialProject = useProjectStore.getState();
 
 function judged(request: VClipWindowRequest): VClipWindowAnalysis {
+	const score = 90 - request.startSec - (request.sourcePath.includes("BEACH") ? 1 : 0);
 	return {
 		startSec: request.startSec,
 		endSec: request.endSec,
-		score: 90 - request.startSec,
+		score,
 		qualityScore: 77,
 		reason: `바다 위 구간 ${request.startSec}`,
 		quality: { brightness: 0.8, motion: 0.6, sharpness: 0.7, stability: 0.9 },
 		ai: {
-			score: 90 - request.startSec,
+			score,
 			category: "orbit",
 			description: `바다 위 구간 ${request.startSec}`,
 			caption: "절벽을 돌아",
@@ -61,20 +65,62 @@ function judged(request: VClipWindowRequest): VClipWindowAnalysis {
 	};
 }
 
-function documentWith(audioSec: number): AxcutDocument {
+function project(audioSec: number): AxcutDocument {
 	const document = createEmptyDocument({ projectId: "p", title: "V.Clip" });
-	document.assets = [drone];
+	document.assets = [
+		drone,
+		beach,
+		{
+			id: "song",
+			kind: "audio",
+			label: "song.mp3",
+			originalPath: "C:/music/song.mp3",
+			cameraTrack: null,
+		},
+		{
+			id: "rendered",
+			kind: "video",
+			label: "rendered clip",
+			originalPath: "C:/Users/me/AppData/Roaming/Donqui/media/clip-effects/abc.mp4",
+			cameraTrack: null,
+		},
+	];
 	if (audioSec > 0)
 		document.audioTracks = [
-			createAudioTrack({ assetId: "music", durationSec: audioSec, kind: "music", label: "BGM" }),
+			createAudioTrack({ assetId: "song", durationSec: audioSec, kind: "music", label: "BGM" }),
 		];
 	return document;
 }
 
+function renderStage() {
+	return render(<VClipStage onContinue={onContinue} onOpenAiSettings={onOpenAiSettings} />);
+}
+
+function panel(name: string) {
+	return screen.getByRole("region", { name: `${name} 구간` });
+}
+
+async function analyseAll() {
+	const button = await screen.findByRole("button", { name: /모든 영상 구간 찾기/ });
+	fireEvent.click(button);
+	await waitFor(() => expect(within(panel("BEACH.MP4")).getAllByRole("article")).toHaveLength(4));
+	await waitFor(() =>
+		expect(
+			within(panel("BEACH.MP4")).getByRole("button", { name: /구간 다시 찾기/ }),
+		).toBeEnabled(),
+	);
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
+	localStorage.clear();
 	useVClipStore.setState(initialVClip, true);
-	useProjectStore.setState({ projectId: "p", document: documentWith(12) });
+	useVClipStore.setState({ segmentSec: 5 });
+	useVisionModelStore.setState(
+		{ ...initialVision, chosen: undefined, models: null, loading: false },
+		true,
+	);
+	useProjectStore.setState({ projectId: "p", document: project(12), saveDocument: save });
 	Object.defineProperty(window, "electronAPI", { configurable: true, value: api });
 	api.vclipListModels.mockResolvedValue({
 		available: true,
@@ -94,183 +140,213 @@ beforeEach(() => {
 		success: true,
 		result: judged(request),
 	}));
-	mocks.addEffectClip.mockImplementation(
-		async (request: { startMs: number }) => `clip-${request.startMs}`,
-	);
+	api.vclipThumbnail.mockResolvedValue({ success: true, dataUrl: "data:image/jpeg;base64,AA==" });
 });
 afterEach(() => {
 	cleanup();
 	useProjectStore.setState(initialProject);
 });
 
-async function startAnalysis() {
-	const button = await screen.findByRole("button", { name: /구간 찾기/ });
-	// Held until Ollama's model list is in.
-	await waitFor(() => expect(button).toBeEnabled());
-	fireEvent.click(button);
-}
-
-async function findSegments() {
-	await startAnalysis();
-	await screen.findByText("바다 위 구간 15");
-	return screen.getAllByRole("article");
-}
-
 describe("VClipStage", () => {
-	it("opens on the first source and shows what FFmpeg read from it", async () => {
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		expect(screen.getByRole("button", { name: /DJI_0017\.MP4/ })).toHaveAttribute(
-			"aria-pressed",
-			"true",
-		);
+	it("lays every source video out on one page, with what FFmpeg read from it", async () => {
+		renderStage();
+		expect(panel("DJI_0017.MP4")).toBeInTheDocument();
+		expect(panel("BEACH.MP4")).toBeInTheDocument();
+		// Audio and the clips this app rendered are not footage to split.
+		expect(screen.queryByRole("region", { name: "song.mp3 구간" })).toBeNull();
+		expect(screen.queryByRole("region", { name: "rendered clip 구간" })).toBeNull();
 		expect(
-			await screen.findByText("0:20.0 · 3840×2160 · 29.97 fps · 소리 없음"),
+			await within(panel("DJI_0017.MP4")).findByText("0:20.0 · 3840×2160 · 29.97 fps · 소리 없음"),
 		).toBeInTheDocument();
-		expect(await screen.findByText(/Ollama 연결됨 · 비전 모델 1개/)).toBeInTheDocument();
-		expect(screen.getByLabelText("분석 모델")).toHaveValue("qwen3-vl:4b");
+		expect(await screen.findByText("분석 모델 qwen3-vl:4b")).toBeInTheDocument();
 		expect(screen.getByText(/남은 0:12\.0/)).toBeInTheDocument();
+		expect(screen.getByLabelText("클립 길이 (초)")).toHaveValue(5);
 	});
 
-	it("finds segments with the model, preselects the best three and makes them into clips", async () => {
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		const cards = await findSegments();
-		expect(cards).toHaveLength(4);
+	it("opens the AI settings for the model, where the Ollama options live", async () => {
+		renderStage();
+		fireEvent.click(await screen.findByRole("button", { name: /AI 설정/ }));
+		expect(onOpenAiSettings).toHaveBeenCalled();
+		expect(screen.queryByLabelText("분석 모델")).toBeNull();
+	});
+
+	it("analyses every video, preselects each one's best three and splits them into the bin", async () => {
+		renderStage();
+		await analyseAll();
+		const drones = within(panel("DJI_0017.MP4")).getAllByRole("article");
+		expect(drones).toHaveLength(4);
+		expect(within(drones[0]).getByText("선회")).toBeInTheDocument();
+		expect(within(drones[0]).getByText("“절벽을 돌아”")).toBeInTheDocument();
 		expect(api.vclipAnalyzeWindow.mock.calls[0][0]).toMatchObject({ model: "qwen3-vl:4b" });
-		expect(within(cards[0]).getByText("선회")).toBeInTheDocument();
-		expect(within(cards[0]).getByText("화질 77")).toBeInTheDocument();
-		expect(within(cards[0]).getByText("“절벽을 돌아”")).toBeInTheDocument();
-		expect(screen.getByText(/선택 3개/)).toBeInTheDocument();
 
-		fireEvent.click(
-			screen.getByRole("button", { name: "선택한 구간 3개를 클립으로 만들고 타임라인에 추가" }),
+		const split = screen.getAllByRole("button", { name: /선택한 구간 6개 클립으로 나누기/ })[0];
+		fireEvent.click(split);
+		await waitFor(() =>
+			expect(useProjectStore.getState().document?.mediaBoard?.clips).toHaveLength(6),
 		);
-		await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(3));
-		expect(mocks.addEffectClip.mock.calls.map((call) => call[0].startMs)).toEqual([0, 5000, 10000]);
-		expect(await screen.findAllByText("클립 완성")).toHaveLength(3);
-		expect(
-			screen.getByRole("button", { name: "선택한 구간은 모두 클립으로 만들었습니다" }),
-		).toBeDisabled();
+		expect(save).toHaveBeenCalledWith(expect.anything(), { history: true });
+		expect(await screen.findAllByText("클립 나눔")).toHaveLength(6);
+		expect(screen.getAllByRole("button", { name: /선택한 구간 0개/ })[0]).toBeDisabled();
+		// Nothing was rendered: splitting only records ranges.
+		expect(screen.queryByLabelText("Remotion 효과")).toBeNull();
 	});
 
-	it("lists footage, not the clips it has already rendered", () => {
-		const document = documentWith(0);
-		document.assets = [
-			drone,
-			{
-				...drone,
-				id: "rendered",
-				label: "DJI_0017.MP4 · 0.0–5.0초 · 줌 인",
-				originalPath: "C:/Users/me/AppData/Roaming/MangopangStudio/media/clip-effects/ab12.mp4",
-			},
-		];
-		useProjectStore.setState({ document });
-		const { unmount } = render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		expect(
-			within(screen.getByRole("complementary", { name: "소스 영상" })).getAllByRole("button"),
-		).toHaveLength(2);
-		expect(screen.queryByRole("button", { name: /0\.0–5\.0초/ })).not.toBeInTheDocument();
-		unmount();
-		// Unless Media handed that very clip over.
-		useVClipStore.getState().selectSource("rendered");
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		expect(screen.getByRole("button", { name: /0\.0–5\.0초/ })).toHaveAttribute(
-			"aria-pressed",
-			"true",
-		);
+	it("adjusts a segment's range with the nudges and the length field", async () => {
+		renderStage();
+		await analyseAll();
+		const card = within(panel("DJI_0017.MP4")).getAllByRole("article")[1];
+		expect(within(card).getByText("0:05.0–0:10.0 · 5.0초")).toBeInTheDocument();
+		fireEvent.click(within(card).getByRole("button", { name: "시작 +0.5초" }));
+		expect(await within(card).findByText("0:05.5–0:10.0 · 4.5초")).toBeInTheDocument();
+		const length = within(card).getByLabelText("길이 (초)");
+		fireEvent.change(length, { target: { value: "7" } });
+		fireEvent.blur(length);
+		expect(await within(card).findByText("0:05.5–0:12.5 · 7.0초")).toBeInTheDocument();
 	});
 
-	it("selects just enough segments to cover the audio still without picture", async () => {
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		await findSegments();
-		fireEvent.click(screen.getByRole("button", { name: "선택 해제" }));
-		expect(screen.getByText(/선택 0개/)).toBeInTheDocument();
+	it("previews a segment from its source and sets its edges from playback", async () => {
+		renderStage();
+		await analyseAll();
+		const card = within(panel("DJI_0017.MP4")).getAllByRole("article")[2];
+		fireEvent.click(within(card).getByRole("button", { name: "0:10.0–0:15.0 구간 미리보기" }));
+		const video = within(card).getByLabelText("구간 미리보기") as HTMLVideoElement;
+		expect(video.getAttribute("src")).toBe("file:///C:/footage/DJI_0017.MP4");
+		Object.defineProperty(video, "currentTime", {
+			configurable: true,
+			writable: true,
+			value: 12.3,
+		});
+		await waitFor(() => expect(within(card).getByText(/0:12\.3/)).toBeInTheDocument());
+		fireEvent.click(within(card).getByRole("button", { name: "여기를 끝으로" }));
+		expect(
+			useVClipStore.getState().runs["p:drone"].segments.find((segment) => segment.startSec === 10)
+				?.endSec,
+		).toBeCloseTo(12.3);
+		fireEvent.click(within(card).getByRole("button", { name: "미리보기 닫기" }));
+		expect(within(card).queryByLabelText("구간 미리보기")).toBeNull();
+	});
+
+	it("adds a segment by hand at the chosen clip length, and gives every segment one length", async () => {
+		renderStage();
+		const drones = panel("DJI_0017.MP4");
+		const add = within(drones).getByRole("button", { name: /구간 직접 추가/ });
+		await waitFor(() => expect(add).toBeEnabled());
+		fireEvent.click(add);
+		expect(await within(drones).findByText("0:00.0–0:05.0 · 5.0초")).toBeInTheDocument();
+		expect(within(drones).getByText("직접 추가")).toBeInTheDocument();
+
+		fireEvent.change(screen.getByLabelText("클립 길이 (초)"), { target: { value: "3" } });
+		fireEvent.click(screen.getByRole("button", { name: "모든 구간에 적용" }));
+		expect(await within(drones).findByText("0:00.0–0:03.0 · 3.0초")).toBeInTheDocument();
+	});
+
+	it("refuses a clip length outside 2–20 seconds", async () => {
+		renderStage();
+		fireEvent.change(screen.getByLabelText("클립 길이 (초)"), { target: { value: "30" } });
+		expect(screen.getByText(/클립 길이는 2~20초 사이로 입력하세요/)).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /모든 영상 구간 찾기/ })).toBeDisabled();
+	});
+
+	it("selects just enough across the videos to cover the audio still without a clip", async () => {
+		renderStage();
+		await analyseAll();
+		fireEvent.click(screen.getAllByRole("button", { name: /선택 해제/ })[0]);
+		expect(screen.getAllByRole("button", { name: /선택한 구간 0개/ })[0]).toBeDisabled();
 		fireEvent.click(screen.getByRole("button", { name: "남은 Audio만큼 선택" }));
-		// 12 s of audio: the three best 5 s segments.
-		expect(screen.getByText(/선택 3개 · 0:15\.0/)).toBeInTheDocument();
+		// 12 s of music: the best 5 s windows of each video, and one more.
+		expect(screen.getAllByRole("button", { name: /선택한 구간 3개/ })[0]).toBeEnabled();
 	});
 
-	it("locks the selection until the analysis has ranked every window", async () => {
-		let release!: () => void;
+	it("keeps found windows locked until the analysis has ranked them", async () => {
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
 		api.vclipAnalyzeWindow.mockImplementation(async (request: VClipWindowRequest) => {
-			if (request.startSec === 15)
-				await new Promise<void>((resolve) => {
-					release = resolve;
-				});
+			if (request.startSec > 0) await gate;
 			return { success: true, result: judged(request) };
 		});
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		await startAnalysis();
-		const provisional = await screen.findAllByRole("article");
-		expect(within(provisional[0]).getByRole("button", { name: "넣기" })).toBeDisabled();
-		expect(screen.getByRole("button", { name: "모두 선택" })).toBeDisabled();
-		expect(screen.getByRole("progressbar", { name: "구간 분석" })).toBeInTheDocument();
-		release();
-		await screen.findByRole("button", { name: "구간 다시 찾기" });
-		expect(
-			within(screen.getAllByRole("article")[0]).getByRole("button", { name: "빼기" }),
-		).toBeEnabled();
+		renderStage();
+		try {
+			fireEvent.click(await screen.findByRole("button", { name: /모든 영상 구간 찾기/ }));
+			const drones = panel("DJI_0017.MP4");
+			const card = await within(drones).findByRole("article");
+			expect(within(card).getByRole("button", { name: "넣기" })).toBeDisabled();
+			expect(within(card).getByRole("button", { name: "시작 +0.5초" })).toBeDisabled();
+			const toolbar = screen.getByRole("region", { name: "V.Clip 설정" });
+			expect(within(toolbar).getByRole("button", { name: /분석 멈추기/ })).toBeInTheDocument();
+			expect(
+				within(panel("BEACH.MP4")).getByRole("button", { name: /대기 취소/ }),
+			).toBeInTheDocument();
+			release();
+			await waitFor(() => expect(within(drones).getAllByRole("article")).toHaveLength(4));
+			const first = within(drones).getAllByRole("article")[0];
+			await waitFor(() =>
+				expect(within(first).getByRole("button", { name: "빼기" })).toBeEnabled(),
+			);
+		} finally {
+			// A held analysis would keep the queue busy for the tests after this one.
+			release();
+			await waitFor(() => expect(useVClipStore.getState().queue).toEqual([]));
+			await waitFor(() =>
+				expect(
+					Object.values(useVClipStore.getState().runs).some((run) => run.status === "analyzing"),
+				).toBe(false),
+			);
+		}
 	});
 
-	it("scores from frame quality when told not to use a model", async () => {
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		await screen.findByText(/Ollama 연결됨/);
-		fireEvent.change(screen.getByLabelText("분석 모델"), { target: { value: "" } });
-		await findSegments();
-		expect(api.vclipAnalyzeWindow.mock.calls[0][0].model).toBeNull();
-	});
-
-	it("says so when Ollama is not running, and still offers the analysis", async () => {
+	it("says so when Ollama is not running, and still analyses by frame quality", async () => {
 		api.vclipListModels.mockResolvedValue({
 			available: false,
 			baseUrl: "http://127.0.0.1:11434",
-			error: "fetch failed: connect ECONNREFUSED 127.0.0.1:11434",
+			error: "fetch failed",
 			models: [],
 		});
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		expect(
-			await screen.findByText(/Ollama에 연결할 수 없어 화질 점수만으로 고릅니다/),
-		).toBeInTheDocument();
-		expect(screen.getByLabelText("분석 모델")).toHaveValue("");
-		expect(screen.getByRole("button", { name: /구간 찾기/ })).toBeEnabled();
+		renderStage();
+		expect(await screen.findByText(/Ollama 연결 안 됨/)).toBeInTheDocument();
+		await analyseAll();
+		expect(api.vclipAnalyzeWindow.mock.calls[0][0]).toMatchObject({ model: null });
 	});
 
-	it("previews a segment with the effect its clip will get", async () => {
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		const cards = await findSegments();
-		fireEvent.change(screen.getByLabelText("Remotion 효과"), { target: { value: "zoom-out" } });
-		fireEvent.change(within(cards[1]).getByLabelText("0:05.0–0:10.0 구간 효과"), {
-			target: { value: "fade" },
+	it("imports several videos in one pick", async () => {
+		const addAsset = vi.fn(async (path: string, label?: string) => {
+			const state = useProjectStore.getState();
+			const asset = {
+				id: `asset-${label}`,
+				kind: "video" as const,
+				label: label ?? path,
+				originalPath: path,
+				cameraTrack: null,
+			};
+			useProjectStore.setState({
+				document: state.document
+					? { ...state.document, assets: [...state.document.assets, asset] }
+					: null,
+			});
+			return asset;
 		});
-		fireEvent.click(within(cards[1]).getByRole("button", { name: "미리보기" }));
-		expect(screen.getByTestId("clip-preview")).toHaveTextContent("fade:5000:10000");
-		fireEvent.click(within(cards[0]).getByRole("button", { name: "미리보기" }));
-		expect(screen.getByTestId("clip-preview")).toHaveTextContent("zoom-out:0:5000");
+		useProjectStore.setState({ addAsset });
+		api.openVideoFilesPicker.mockResolvedValue({
+			success: true,
+			files: [
+				{ path: "C:/footage/A.MP4", name: "A.MP4" },
+				{ path: "C:/footage/DJI_0017.MP4", name: "DJI_0017.MP4" },
+				{ path: "C:/footage/B.MP4", name: "B.MP4" },
+			],
+			rejected: [],
+		});
+		renderStage();
+		fireEvent.click(screen.getByRole("button", { name: /영상 가져오기/ }));
+		await waitFor(() => expect(addAsset).toHaveBeenCalledTimes(2));
+		expect(await screen.findByRole("region", { name: "A.MP4 구간" })).toBeInTheDocument();
+		expect(screen.getByRole("region", { name: "B.MP4 구간" })).toBeInTheDocument();
 	});
 
-	it("hands a segment to the manual cutter, starting from its range", async () => {
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		const cards = await findSegments();
-		fireEvent.click(within(cards[2]).getByRole("button", { name: "구간 다듬기" }));
-		expect(screen.getByRole("tab", { name: /직접 자르기/ })).toHaveAttribute(
-			"aria-selected",
-			"true",
-		);
-		expect(await screen.findByLabelText("클립 시작 (초)")).toHaveValue(10);
-		expect(screen.getByLabelText("클립 끝 (초)")).toHaveValue(15);
-		// FFmpeg already measured the source; the browser probe is not asked.
-		expect(mocks.probeDuration).not.toHaveBeenCalled();
-	});
-
-	it("asks for a project before anything else", () => {
-		useProjectStore.setState({ projectId: null, document: null });
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={vi.fn()} />);
-		expect(screen.getByText("프로젝트를 먼저 만들거나 열어 주세요.")).toBeInTheDocument();
-	});
-
-	it("continues to Media", () => {
-		const onContinue = vi.fn();
-		render(<VClipStage onAddToTimeline={onAdd} onContinue={onContinue} />);
-		fireEvent.click(screen.getByRole("button", { name: /Media로 이동/ }));
-		expect(onContinue).toHaveBeenCalledOnce();
+	it("asks for footage when the project has none", () => {
+		const document = createEmptyDocument({ projectId: "p", title: "Empty" });
+		useProjectStore.setState({ document });
+		renderStage();
+		expect(screen.getByText("나눌 영상을 가져오세요")).toBeInTheDocument();
 	});
 });

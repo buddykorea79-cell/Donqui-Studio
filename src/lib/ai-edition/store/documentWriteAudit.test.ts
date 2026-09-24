@@ -172,9 +172,17 @@ const DECLARED: WritePath[] = [
 	w("src/components/ai-edition/v4/AudioStage.tsx", "AudioTrackEditor", "save", "gesture"),
 	w("src/components/ai-edition/v4/AudioStage.tsx", "importAudio", "save", "gesture"),
 	w("src/components/ai-edition/v4/AudioStage.tsx", "save", "save", "gesture"),
-	// Rendered duration metadata precedes the separate, undoable timeline insertion. Shared by
-	// the manual clip builder and V.Clip's batch.
-	w("src/lib/clip-effects/addEffectClip.ts", "addEffectClip", "save", "automatic"),
+	// Media's composition onto the timeline: one undoable edit for the whole batch, once
+	// its renders are done.
+	w("src/lib/media-board/apply.ts", "applyComposition", "save", "gesture"),
+	// A render's real length and size on the asset it became. Part of applying, which is
+	// the edit above — not one of its own.
+	w("src/lib/media-board/apply.ts", "mediaPlacement", "save", "automatic"),
+	// The media board's read-modify-save wrapper. It forwards: composing and splitting are
+	// the user's edits, and V.Clip recording what FFmpeg read off a file is not.
+	w("src/lib/media-board/mutate.ts", "mutateDocument", "save", "forwarded"),
+	// V.Clip's split: the selected segments into Media's bin, one undo step.
+	w("src/lib/vclip/store.ts", "split", "save", "gesture"),
 
 	// The agent's document. The optimistic write is not the edit — the save is, and
 	// it names the pre-agent document as what Ctrl+Z returns to.

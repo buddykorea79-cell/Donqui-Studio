@@ -371,6 +371,111 @@ export function describeQuality(quality: VClipQuality): string {
 	].join(" · ");
 }
 
+/** One frame at `atSec` as a card thumbnail: the keyframe at or after it, or the exact frame. */
+export function thumbnailArgs(
+	sourcePath: string,
+	atSec: number,
+	output: string,
+	keyframesOnly: boolean,
+): string[] {
+	return [
+		"-hide_banner",
+		"-nostdin",
+		"-y",
+		"-loglevel",
+		"error",
+		"-threads",
+		"1",
+		...(keyframesOnly ? ["-skip_frame", "nokey"] : []),
+		"-ss",
+		atSec.toFixed(3),
+		"-i",
+		sourcePath,
+		"-map",
+		"0:V:0",
+		"-frames:v",
+		"1",
+		"-vf",
+		`${boxScale(THUMB_BOX)},format=yuvj420p`,
+		"-q:v",
+		"5",
+		output,
+	];
+}
+
+const THUMBNAIL_CACHE_VERSION = 1;
+/** Cards ask for their thumbnails all at once; 4K HEVC decodes are heavy, so two at a time. */
+const THUMBNAIL_CONCURRENCY = 2;
+let thumbnailsRunning = 0;
+const thumbnailWaiters: Array<() => void> = [];
+
+async function withThumbnailSlot<T>(work: () => Promise<T>): Promise<T> {
+	if (thumbnailsRunning >= THUMBNAIL_CONCURRENCY)
+		await new Promise<void>((resolve) => thumbnailWaiters.push(resolve));
+	else thumbnailsRunning++;
+	try {
+		return await work();
+	} finally {
+		// The slot passes straight to the next waiter, so nobody can slip in between.
+		const next = thumbnailWaiters.shift();
+		if (next) next();
+		else thumbnailsRunning--;
+	}
+}
+
+/**
+ * A card thumbnail of `sourcePath` at `atSec` (to a tenth of a second), as a JPEG data URL.
+ * Cached on disk by file identity and time, so a card seen once opens instantly afterwards.
+ */
+export async function sourceThumbnail(
+	sourcePath: string,
+	atSec: number,
+	cacheDir: string,
+): Promise<string> {
+	if (!Number.isFinite(atSec) || atSec < 0) throw new Error("Choose a time inside the video");
+	const source = await stat(sourcePath);
+	if (!source.isFile()) throw new Error("The source video is unavailable");
+	const at = Math.round(atSec * 10) / 10;
+	const key = createHash("sha256")
+		.update(
+			JSON.stringify({
+				version: THUMBNAIL_CACHE_VERSION,
+				path: path.resolve(sourcePath),
+				size: source.size,
+				mtimeMs: source.mtimeMs,
+				at,
+				box: THUMB_BOX,
+			}),
+		)
+		.digest("hex");
+	const file = path.join(cacheDir, `${key}.jpg`);
+	const toDataUrl = (jpeg: Buffer) => `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+	const cached = await readFile(file).catch(() => null);
+	if (cached && cached.length > 0) return toDataUrl(cached);
+	return withThumbnailSlot(async () => {
+		await mkdir(cacheDir, { recursive: true });
+		const temporary = path.join(cacheDir, `${randomUUID()}.tmp.jpg`);
+		try {
+			let failure = "";
+			for (const keyframesOnly of [true, false]) {
+				const { code, stderr } = await runFfmpeg(
+					requireFfmpeg(),
+					thumbnailArgs(sourcePath, at, temporary, keyframesOnly),
+				);
+				const jpeg = code === 0 ? await readFile(temporary).catch(() => null) : null;
+				if (jpeg && jpeg.length > 0) {
+					await rename(temporary, file).catch(() => undefined);
+					return toDataUrl(jpeg);
+				}
+				failure = lastLines(stderr);
+			}
+			throw new Error(`Could not read a frame at ${at} s${failure ? `: ${failure}` : ""}`);
+		} finally {
+			await rm(temporary, { force: true });
+		}
+	});
+}
+
 export interface AnalyzeWindowOptions {
 	cacheDir: string;
 	ollamaBaseUrl: string;

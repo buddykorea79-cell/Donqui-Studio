@@ -395,7 +395,19 @@
 		"disconnect": "中斷連線",
 		"cancel": "取消",
 		"save": "儲存",
-		"saveAndUse": "儲存並使用"
+		"saveAndUse": "儲存並使用",
+		"ollama": {
+			"title": "本機視覺模型 (Ollama)",
+			"description": "V.Clip 用它為影片片段評分和描述。畫面不會離開這台電腦。",
+			"modelLabel": "模型",
+			"withoutAi": "不使用 AI（僅畫質評分）",
+			"refresh": "重新檢查",
+			"checking": "正在檢查 Ollama…",
+			"unavailable": "無法連線到 {{url}} 上的 Ollama。V.Clip 僅依畫質評分挑選。",
+			"noModels": "{{url}} 上沒有視覺模型。執行「ollama pull qwen3-vl:4b」安裝後即可取得評分和場景描述。",
+			"off": "V.Clip 僅依畫質評分挑選。已安裝 {{count}} 個視覺模型。",
+			"ready": "已連線 {{url}} · {{count}} 個視覺模型。模型越小越快。"
+		}
 	},
 	"cpuCompositor": {
 		"notice": "沒有相容的 GPU，正在使用 CPU 算繪，因此播放較慢。",

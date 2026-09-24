@@ -31,8 +31,13 @@ export function resolveClipEffect(selection: ClipEffectSelection, seed: string):
 export const CLIP_EFFECT_FPS = 30;
 export const CLIP_EFFECT_VERSION = 2;
 
+/** A photo is shown still for as long as the clip lasts; a video plays from `startMs`. */
+export type ClipSourceKind = "video" | "image";
+
 export interface CreateClipEffectRequest {
 	sourcePath: string;
+	/** Absent means a video, as every request made before photos could take an effect. */
+	sourceKind?: ClipSourceKind;
 	startMs: number;
 	endMs: number;
 	effect: ClipEffectId;
@@ -53,6 +58,7 @@ export type ClipEffectProps = {
 	sourceUrl: string;
 	startMs: number;
 	effect: ClipEffectId;
+	sourceKind?: ClipSourceKind;
 };
 
 /** 1080p landscape / portrait ceiling; preserve aspect ratio and H.264 even dimensions. */

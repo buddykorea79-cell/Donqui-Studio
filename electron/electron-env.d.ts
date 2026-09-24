@@ -308,6 +308,29 @@ interface Window {
 			request: import("../src/lib/vclip/contract").VClipWindowRequest,
 		) => Promise<import("../src/lib/vclip/contract").VClipWindowResult>;
 		vclipCancel?: (jobId: string) => Promise<void>;
+		vclipThumbnail?: (
+			sourcePath: string,
+			atSec: number,
+		) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+		/** Several files in one pick; `rejected` names the ones that could not be read. */
+		openVideoFilesPicker?: () => Promise<{
+			success: boolean;
+			canceled?: boolean;
+			files: Array<{ path: string; name: string }>;
+			rejected: string[];
+			message?: string;
+		}>;
+		openImageFilesPicker?: () => Promise<{
+			success: boolean;
+			canceled?: boolean;
+			files: Array<{ path: string; name: string }>;
+			rejected: string[];
+			message?: string;
+		}>;
+		createImageClip?: (
+			imagePath: string,
+			duration: number,
+		) => Promise<import("../src/lib/clip-effects/catalog").CreateClipEffectResult>;
 		openVideoFilePicker: () => Promise<{
 			success: boolean;
 			path?: string;

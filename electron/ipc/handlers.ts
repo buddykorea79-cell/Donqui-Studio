@@ -75,7 +75,7 @@ import { createImageClip, IMAGE_EXTENSIONS } from "../media/imageClip";
 import { findMediaLinksByFingerprint, registerMediaLinks } from "../media/mediaLinksRegistry";
 import { listVisionModels, resolveOllamaBaseUrl } from "../media/ollamaVision";
 import { relinkProjectMedia } from "../media/projectMediaRelinker";
-import { analyzeWindow, probeVideo } from "../media/vclipAnalysis";
+import { analyzeWindow, probeVideo, sourceThumbnail } from "../media/vclipAnalysis";
 import {
 	type LinuxCaptureSourceKind,
 	LinuxNativeCaptureSession,
@@ -440,6 +440,23 @@ function approveDocumentMedia(document: AxcutDocument): void {
 		const camera = normalizeVideoSourcePath(asset.cameraTrack?.sourcePath);
 		if (camera && hasAllowedImportMediaExtension(camera)) approveFilePath(camera);
 	}
+	// Media's photos are rendered from their original files, which are not assets.
+	for (const image of document.mediaBoard?.images ?? []) {
+		const photo = normalizeVideoSourcePath(image.path);
+		if (photo && hasImageExtension(photo)) approveFilePath(photo);
+	}
+}
+
+function hasImageExtension(filePath: string): boolean {
+	return IMAGE_EXTENSIONS.includes(path.extname(filePath).slice(1).toLowerCase());
+}
+
+/** A photo the user picked, or one a loaded project's media board declares. */
+function resolveApprovedImagePath(imagePath?: string | null): string | null {
+	const normalizedPath = normalizeVideoSourcePath(imagePath);
+	if (!normalizedPath || !hasImageExtension(normalizedPath) || !isPathAllowed(normalizedPath))
+		return null;
+	return normalizedPath;
 }
 
 function resolveRecordingOutputPath(fileName: string): string {
@@ -3940,7 +3957,10 @@ export function registerIpcHandlers(
 			request: import("../../src/lib/clip-effects/catalog").CreateClipEffectRequest,
 		) => {
 			try {
-				const sourcePath = request && resolveApprovedVideoPath(request.sourcePath);
+				const sourcePath =
+					request?.sourceKind === "image"
+						? resolveApprovedImagePath(request.sourcePath)
+						: request && resolveApprovedVideoPath(request.sourcePath);
 				if (!sourcePath) throw new Error("Choose an imported video or photo first");
 				const base = app.isPackaged
 					? path.join(process.resourcesPath, "remotion")
@@ -4024,6 +4044,127 @@ export function registerIpcHandlers(
 	});
 	ipcMain.handle("vclip-cancel", (_event, jobId: string) => {
 		for (const controller of vclipJobs.get(jobId) ?? []) controller.abort();
+	});
+	// A still for a clip card, in V.Clip and in Media's bin.
+	ipcMain.handle("vclip-thumbnail", async (_event, sourcePath: string, atSec: number) => {
+		try {
+			const approved = resolveApprovedVideoPath(sourcePath);
+			if (!approved) throw new Error("Choose an imported video first");
+			return {
+				success: true,
+				dataUrl: await sourceThumbnail(
+					approved,
+					atSec,
+					path.join(app.getPath("userData"), "media", "vclip-thumbnails"),
+				),
+			};
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) };
+		}
+	});
+	// Several videos in one pick, for V.Clip's multi-video workspace. No default folder: the
+	// dialog reopens where the last batch came from.
+	ipcMain.handle("open-video-files-picker", async () => {
+		try {
+			const result = await dialog.showOpenDialog(
+				buildDialogOptions(
+					{
+						title: "Donqui Studio · 영상 가져오기",
+						filters: [
+							{
+								name: mainT("dialogs", "fileDialogs.videoFiles"),
+								extensions: ["webm", "mp4", "mov", "avi", "mkv", "m4v", "wmv", "flv", "ts"],
+							},
+							{ name: mainT("dialogs", "fileDialogs.allFiles"), extensions: ["*"] },
+						],
+						properties: ["openFile", "multiSelections"],
+					},
+					getMainWindow(),
+				),
+			);
+			if (result.canceled || result.filePaths.length === 0)
+				return { success: false, canceled: true, files: [], rejected: [] };
+			const files: Array<{ path: string; name: string }> = [];
+			const rejected: string[] = [];
+			for (const filePath of result.filePaths) {
+				const approved = await approveReadableVideoPath(filePath);
+				if (approved) files.push({ path: approved, name: path.basename(approved) });
+				else rejected.push(path.basename(filePath));
+			}
+			return { success: files.length > 0, files, rejected };
+		} catch (error) {
+			return {
+				success: false,
+				files: [],
+				rejected: [],
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
+	// Photos for Media's composition: approved as they are, and rendered only once they are
+	// placed, at the length the composition gives them.
+	ipcMain.handle("open-image-files-picker", async () => {
+		try {
+			const result = await dialog.showOpenDialog(
+				buildDialogOptions(
+					{
+						title: "Donqui Studio · 사진 추가",
+						filters: [{ name: "Photos", extensions: IMAGE_EXTENSIONS }],
+						properties: ["openFile", "multiSelections"],
+					},
+					getMainWindow(),
+				),
+			);
+			if (result.canceled || result.filePaths.length === 0)
+				return { success: false, canceled: true, files: [], rejected: [] };
+			const files: Array<{ path: string; name: string }> = [];
+			const rejected: string[] = [];
+			for (const filePath of result.filePaths) {
+				const normalized = normalizeVideoSourcePath(filePath);
+				const readable =
+					normalized && hasImageExtension(normalized)
+						? await fs
+								.stat(normalized)
+								.then((stats) => stats.isFile() && stats.size <= 100 * 1024 * 1024)
+								.catch(() => false)
+						: false;
+				if (normalized && readable) {
+					approveFilePath(normalized);
+					files.push({ path: normalized, name: path.basename(normalized) });
+				} else rejected.push(path.basename(filePath));
+			}
+			return { success: files.length > 0, files, rejected };
+		} catch (error) {
+			return {
+				success: false,
+				files: [],
+				rejected: [],
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
+	// A photo as a still video of `duration` seconds — Media's photo item with no effect.
+	ipcMain.handle("create-image-clip", async (_event, imagePath: string, duration: number) => {
+		try {
+			const approved = resolveApprovedImagePath(imagePath);
+			if (!approved) throw new Error("Choose an imported photo first");
+			const output = await createImageClip(
+				approved,
+				duration,
+				path.join(app.getPath("userData"), "media", "image-clips"),
+			);
+			approveFilePath(output);
+			const probe = await probeVideo(output).catch(() => null);
+			return {
+				success: true,
+				filePath: output,
+				durationMs: Math.round((probe?.durationSec ?? duration) * 1000),
+				width: probe?.width,
+				height: probe?.height,
+			};
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) };
+		}
 	});
 	ipcMain.handle("open-image-clip-picker", async (_event, duration: number) => {
 		try {
