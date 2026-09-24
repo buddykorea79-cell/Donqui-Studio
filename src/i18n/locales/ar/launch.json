@@ -57,8 +57,8 @@
 		"screens": "الشاشات ({{count}})",
 		"windows": "النوافذ ({{count}})",
 		"emptyTitle": "لم يتم العثور على شاشات أو نوافذ",
-		"emptyDescription": "إذا كنت قد منحت للتو إذن تسجيل الشاشة، أعد تحميل هذه النافذة. قد تحتاج على macOS إلى إعادة فتح OpenScreen.",
-		"loadFailedDescription": "تعذّر على OpenScreen تحميل مصادر الالتقاط. أعد تحميل هذه النافذة وحاول مرة أخرى.",
+		"emptyDescription": "إذا كنت قد منحت للتو إذن تسجيل الشاشة، أعد تحميل هذه النافذة. قد تحتاج على macOS إلى إعادة فتح Donqui Studio.",
+		"loadFailedDescription": "تعذّر على Donqui Studio تحميل مصادر الالتقاط. أعد تحميل هذه النافذة وحاول مرة أخرى.",
 		"defaultSourceName": "الشاشة"
 	},
 	"recording": {
@@ -70,7 +70,7 @@
 	"language": "اللغة",
 	"systemLanguagePrompt": {
 		"title": "هل تريد استخدام لغة نظامك؟",
-		"description": "اكتشفنا أن {{language}} هي لغة نظامك. هل تريد تبديل OpenScreen إلى {{language}}؟",
+		"description": "اكتشفنا أن {{language}} هي لغة نظامك. هل تريد تبديل Donqui Studio إلى {{language}}؟",
 		"switch": "التبديل إلى {{language}}",
 		"keepDefault": "الاحتفاظ باللغة الحالية"
 	},
@@ -80,7 +80,7 @@
 	},
 	"softwareEncoderFallback": {
 		"title": "تم التبديل إلى الترميز البرمجي",
-		"description": "تعذّر تشغيل مرمّز GPU الافتراضي، لذا تحوّل OpenScreen إلى ترميز H.264 البرمجي. سيستمر التسجيل كالمعتاد، لكن استخدام المعالج قد يكون أعلى.",
+		"description": "تعذّر تشغيل مرمّز GPU الافتراضي، لذا تحوّل Donqui Studio إلى ترميز H.264 البرمجي. سيستمر التسجيل كالمعتاد، لكن استخدام المعالج قد يكون أعلى.",
 		"dismiss": "حسنًا",
 		"dontShowAgain": "عدم الإظهار مرة أخرى"
 	},

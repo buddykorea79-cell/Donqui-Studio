@@ -25,6 +25,7 @@ import {
 	useTranscriptionLabel,
 } from "../TranscriptionStatus";
 import styles from "./EditorShellV4.module.css";
+import { MediaClipBuilder } from "./MediaClipBuilder";
 
 const ASSET_MIME = "application/x-axcut-asset";
 const THUMB_GRADIENTS = [
@@ -66,6 +67,8 @@ export function MediaStage({
 	const transcriptionLabel = useTranscriptionLabel();
 	const [query, setQuery] = useState("");
 	const [busy, setBusy] = useState(false);
+	const [photoDuration, setPhotoDuration] = useState(5);
+	const [appendOnImport, setAppendOnImport] = useState(false);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [detailOpen, setDetailOpen] = useState(false);
 	const [lang, setLang] = useState<TranscriptLanguageCode>("auto");
@@ -96,17 +99,32 @@ export function MediaStage({
 	const selectedBusy =
 		selectedTranscription.status === "running" || selectedTranscription.status === "queued";
 
-	const handleImport = async () => {
+	const handleImport = async (photo = false) => {
 		if (!projectId) {
 			toast.error(t("mediaStage.openProjectFirst"));
 			return;
 		}
-		const picker = await window.electronAPI?.openVideoFilePicker();
-		if (!picker?.success || !picker.path) return;
+		if (busy) return;
 		setBusy(true);
 		try {
+			const picker = photo
+				? await window.electronAPI?.openImageClipPicker?.(photoDuration)
+				: await window.electronAPI?.openVideoFilePicker();
+			if (!picker?.success || !picker.path) {
+				if (picker && "message" in picker && picker.message)
+					throw new Error(String(picker.message));
+				if (!picker && photo)
+					throw new Error("사진 가져오기는 Donqui Studio 데스크톱 앱에서 사용할 수 있습니다.");
+				return;
+			}
+			if (useProjectStore.getState().projectId !== projectId) return;
 			const label = picker.name || basename(picker.path);
-			await addAsset(picker.path, label);
+			const asset = await addAsset(picker.path, label);
+			if (asset && appendOnImport) await onAddToTimeline(asset.id);
+			if (asset) {
+				setSelectedId(asset.id);
+				setDetailOpen(true);
+			}
 			toast.success(t("mediaStage.added", { label }));
 		} catch (err) {
 			toast.error(t("mediaStage.couldNotAddAsset"), {
@@ -212,12 +230,53 @@ export function MediaStage({
 						<button
 							type="button"
 							className={styles.importBtn}
-							onClick={handleImport}
+							onClick={() => void handleImport()}
 							disabled={!projectId || busy}
 						>
 							<Plus size={14} />
-							{t("mediaStage.importMedia")}
+							{busy ? "미디어 준비 중…" : "전체 영상 추가"}
 						</button>
+						<div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+							<label>
+								<input
+									type="checkbox"
+									checked={appendOnImport}
+									onChange={(e) => setAppendOnImport(e.target.checked)}
+								/>{" "}
+								가져온 미디어를 전체 클립으로 타임라인에 추가
+							</label>
+							<label>
+								사진 클립 길이 (초){" "}
+								<input
+									aria-label="사진 클립 길이 (초)"
+									type="number"
+									min={0.5}
+									max={600}
+									step={0.5}
+									value={photoDuration}
+									onChange={(e) => setPhotoDuration(Number(e.target.value))}
+									style={{ width: 72, background: "var(--surface-2)", color: "var(--fg)" }}
+								/>
+							</label>
+							<button
+								type="button"
+								className={styles.importBtn}
+								onClick={() => void handleImport(true)}
+								disabled={
+									!projectId ||
+									busy ||
+									!Number.isFinite(photoDuration) ||
+									photoDuration < 0.5 ||
+									photoDuration > 600
+								}
+							>
+								<Plus size={14} /> 사진 추가
+							</button>
+							<p className={styles.mediaHint}>
+								소스를 선택해 구간·Remotion 효과를 정하고 미리보기로 확인하세요. Audio를 넣었다면
+								남은 길이에 맞춰 클립을 만들 수 있습니다.
+							</p>
+						</div>
 					</div>
 
 					{detailOpen && selected ? (
@@ -240,7 +299,7 @@ export function MediaStage({
 										letterSpacing: "-0.01em",
 									}}
 								>
-									{t("mediaStage.sourceTranscript")}
+									클립 · 효과 · 미리보기
 								</h2>
 								<button
 									type="button"
@@ -275,6 +334,11 @@ export function MediaStage({
 							>
 								{selected.label || basename(selected.originalPath)}
 							</div>
+							<MediaClipBuilder
+								key={`${projectId}:${selected.id}`}
+								asset={selected}
+								onAddToTimeline={onAddToTimeline}
+							/>
 							<button
 								type="button"
 								onClick={addSelectedToTimeline}
@@ -296,7 +360,7 @@ export function MediaStage({
 								}}
 							>
 								<Plus size={14} />
-								{t("mediaStage.addToTimeline")}
+								원본 전체를 효과 없이 추가
 							</button>
 
 							<div style={{ marginBottom: 16 }}>

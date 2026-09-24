@@ -550,6 +550,9 @@ export const audioTrackSchema = endGteStart(
 		// Absent on tracks written before ventilation existed — they are their own
 		// single fragment, so `trackId ?? id` is always the group key.
 		trackId: z.string().min(1).optional(),
+		// Audio-first projects keep the soundtrack on the programme clock while
+		// visual clips are arranged. Existing clip-following tracks omit this.
+		timelineLocked: z.boolean().optional(),
 		startMs: z.number().nonnegative(),
 		endMs: z.number().nonnegative(),
 		...clipAnchorShape,

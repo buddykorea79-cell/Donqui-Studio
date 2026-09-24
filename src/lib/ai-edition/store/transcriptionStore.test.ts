@@ -2,11 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toastText } from "@/i18n/toastText";
 import type { AxcutDocument, AxcutTranscript } from "../schema";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
 import { useProjectStore } from "./projectStore";
 import { useTranscriptionStore, whenTranscriptionIdle } from "./transcriptionStore";
 
 const bridgeMocks = vi.hoisted(() => ({
 	save: vi.fn(),
+	addAsset: vi.fn(),
 }));
 
 const transcribeMocks = vi.hoisted(() => ({
@@ -20,7 +22,7 @@ const toastMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/native/client", () => ({
-	nativeBridgeClient: { aiEdition: { save: bridgeMocks.save } },
+	nativeBridgeClient: { aiEdition: { save: bridgeMocks.save, addAsset: bridgeMocks.addAsset } },
 }));
 
 vi.mock("../document/transcribe", async (importOriginal) => {
@@ -108,6 +110,7 @@ describe("useTranscriptionStore", () => {
 		useTranscriptionStore.getState().reset();
 		useProjectStore.getState().clear();
 		bridgeMocks.save.mockReset();
+		bridgeMocks.addAsset.mockReset();
 		// The bridge echoes back whatever it was handed, like a successful save.
 		bridgeMocks.save.mockImplementation(async (document: AxcutDocument) => ({
 			success: true,
@@ -125,6 +128,71 @@ describe("useTranscriptionStore", () => {
 		vi.clearAllMocks();
 		// biome-ignore lint/suspicious/noExplicitAny: test-only stub of the preload bridge
 		delete (window as any).electronAPI;
+	});
+
+	it.each([
+		"transcript",
+		"no-audio",
+	] as const)("preserves an inserted clip on disk when %s finishes during a video import", async (outcome) => {
+		let disk = makeDoc(["asset_1"]);
+		loadDocument(disk);
+		const inserted = {
+			id: "photo_clip",
+			assetId: "asset_1",
+			sourceStartSec: 0,
+			sourceEndSec: 1.5,
+			timelineStartSec: 0,
+			timelineEndSec: 1.5,
+			wordRefs: [],
+			origin: "user" as const,
+			reason: "Photo clip",
+		};
+		const savingClip = deferred();
+		bridgeMocks.save.mockImplementation(async (document: AxcutDocument) => {
+			if (bridgeMocks.save.mock.calls.length === 1) await savingClip.promise;
+			disk = document;
+			return { success: true, document };
+		});
+		// Native addAsset reads the project file and persists its new asset. It
+		// must not read the pre-insertion file while that write is still in flight.
+		bridgeMocks.addAsset.mockImplementation(async () => {
+			disk = { ...disk, assets: [...disk.assets, asset("imported_video")] };
+			return { success: true, document: disk };
+		});
+		if (outcome === "transcript") {
+			transcribeMocks.transcribeAsset.mockResolvedValue(transcriptFor("asset_1"));
+		} else {
+			transcribeMocks.transcribeAsset.mockRejectedValue(
+				new Error("No audio track found in this video."),
+			);
+		}
+
+		const insertion = enqueueDocumentWrite(() =>
+			useProjectStore
+				.getState()
+				.saveDocument(
+					{ ...disk, timeline: { ...disk.timeline, clips: [inserted] } },
+					{ history: true },
+				),
+		);
+		await vi.waitFor(() => expect(bridgeMocks.save).toHaveBeenCalledTimes(1));
+		useTranscriptionStore.getState().sync(useProjectStore.getState().document);
+		await vi.waitFor(() => expect(transcribeMocks.transcribeAsset).toHaveBeenCalledTimes(1));
+		const importing = useProjectStore.getState().addAsset("/tmp/imported_video.mp4");
+		await Promise.resolve();
+		expect(bridgeMocks.addAsset).not.toHaveBeenCalled();
+		expect(bridgeMocks.save).toHaveBeenCalledTimes(1);
+		savingClip.release();
+		await Promise.all([insertion, importing, whenTranscriptionIdle()]);
+
+		expect(disk.timeline.clips).toEqual([inserted]);
+		expect(useProjectStore.getState().document?.timeline.clips).toEqual([inserted]);
+		expect(disk.assets.map((item) => item.id)).toEqual(["asset_1", "imported_video"]);
+		if (outcome === "transcript") {
+			expect(disk.transcripts).toHaveLength(1);
+		} else {
+			expect(disk.assets[0].transcriptionFailure?.kind).toBe("no-audio");
+		}
 	});
 
 	it("transcribes every asset that has no transcript, one at a time", async () => {

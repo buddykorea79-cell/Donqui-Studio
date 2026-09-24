@@ -36,6 +36,7 @@ import {
 	type AnnotationTextAnimation,
 	TEXT_ANIMATION_VALUES,
 } from "@/lib/ai-edition/annotations/textAnimation";
+import type { ManualSubtitleInput } from "@/lib/ai-edition/document/manualSubtitle";
 import type { AxcutAnnotationRegion, AxcutClip } from "@/lib/ai-edition/schema";
 import { rafCoalesce } from "@/lib/ai-edition/store/rafCoalesce";
 import { useEditorSettings } from "@/lib/ai-edition/store/useEditorSettings";
@@ -54,6 +55,7 @@ import {
 	VideoEffectsPane,
 } from "../RightPanes";
 import styles from "./EditorShellV4.module.css";
+import { ManualSubtitlePane } from "./ManualSubtitlePane";
 
 type TimelineApi = ReturnType<typeof useTimeline>;
 
@@ -61,7 +63,7 @@ type TimelineApi = ReturnType<typeof useTimeline>;
 // They were never a separate concern from the transcript — they RENDER it — and two
 // tabs meant two entry points to transcription, one of which ("transcribe video",
 // on the caption tab) was the only one many users ever found. See issue #560.
-export type Facet = "effects" | "layout" | "audio" | "cursor" | "transcript";
+export type Facet = "effects" | "layout" | "audio" | "cursor" | "transcript" | "subtitles";
 
 const FACETS: Array<{ id: Facet; labelKey: string; icon: typeof SlidersHorizontal }> = [
 	// Background is a SECTION of this facet now, not a facet of its own — see
@@ -70,6 +72,7 @@ const FACETS: Array<{ id: Facet; labelKey: string; icon: typeof SlidersHorizonta
 	{ id: "layout", labelKey: "layout.title", icon: Camera },
 	{ id: "audio", labelKey: "audio.title", icon: AudioLines },
 	{ id: "cursor", labelKey: "cursor.title", icon: MousePointer2 },
+	{ id: "subtitles", labelKey: "직접 자막 추가", icon: FileText },
 	{ id: "transcript", labelKey: "facets.transcript", icon: FileText },
 ];
 
@@ -86,6 +89,7 @@ interface FloatingInspectorProps {
 	 * through a facet body. */
 	clips: AxcutClip[];
 	onEditClip: (clip: AxcutClip) => void;
+	onAddSubtitle: (input: ManualSubtitleInput) => Promise<void>;
 	transcriptProps: TranscriptProps;
 	/** Drives the selected-element settings pane (zoom/speed/annotation/trim) —
 	 * takes over the inspector, forcing it open, whenever a timeline region is
@@ -101,6 +105,7 @@ export function FloatingInspector({
 	onToggleOpen,
 	clips,
 	onEditClip,
+	onAddSubtitle,
 	transcriptProps,
 	tl,
 }: FloatingInspectorProps) {
@@ -132,7 +137,12 @@ export function FloatingInspector({
 					) : audioTrackSelected ? (
 						<AudioTrackPane tl={tl} onClose={() => tl.clearSelection()} />
 					) : (
-						<FacetBody facet={facet} onCollapse={onToggleOpen} transcriptProps={transcriptProps} />
+						<FacetBody
+							onAddSubtitle={onAddSubtitle}
+							facet={facet}
+							onCollapse={onToggleOpen}
+							transcriptProps={transcriptProps}
+						/>
 					)}
 				</div>
 			) : null}
@@ -141,8 +151,8 @@ export function FloatingInspector({
 					<button
 						key={id}
 						type="button"
-						title={ts(labelKey)}
-						aria-label={ts(labelKey)}
+						title={id === "subtitles" ? labelKey : ts(labelKey)}
+						aria-label={id === "subtitles" ? labelKey : ts(labelKey)}
 						aria-pressed={!selection && !audioTrackSelected && open && facet === id}
 						onClick={() => {
 							// Switching facets while an element is selected should show
@@ -1142,12 +1152,14 @@ const secondaryBtnStyle: React.CSSProperties = {
 };
 
 function FacetBody({
+	onAddSubtitle,
 	facet,
 	onCollapse,
 	transcriptProps,
 }: {
 	facet: Facet;
 	onCollapse: () => void;
+	onAddSubtitle: (input: ManualSubtitleInput) => Promise<void>;
 	transcriptProps: TranscriptProps;
 }) {
 	const te = useScopedT("editor");
@@ -1178,6 +1190,7 @@ function FacetBody({
 		</button>
 	);
 
+	if (facet === "subtitles") return wrap(collapse, <ManualSubtitlePane onAdd={onAddSubtitle} />);
 	if (facet === "layout") return wrap(collapse, <LayoutPane />);
 	if (facet === "audio") return wrap(collapse, <AudioPane />);
 	if (facet === "cursor") return wrap(collapse, <CursorPane />);

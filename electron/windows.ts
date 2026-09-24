@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { app, BrowserWindow, ipcMain, screen } from "electron";
+import { PRODUCT_NAME } from "./about";
 import {
 	clampRectToWorkArea,
 	loadEditorWindowState,
@@ -25,6 +26,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const RENDERER_DIST = path.join(APP_ROOT, "dist");
+const WINDOW_ICON = path.join(
+	VITE_DEV_SERVER_URL ? path.join(APP_ROOT, "public") : RENDERER_DIST,
+	"donqui.png",
+);
 const HEADLESS = process.env["HEADLESS"] === "true";
 
 // The HUD and Notes windows are excluded from every screen/window capture (WGC on Windows uses
@@ -363,6 +368,8 @@ export function createHudOverlayWindow(): BrowserWindow {
 	const y = Math.floor(workArea.y + workArea.height - windowHeight - 5);
 
 	const win = new BrowserWindow({
+		title: PRODUCT_NAME,
+		icon: WINDOW_ICON,
 		width: windowWidth,
 		height: windowHeight,
 		// Min/max are intentionally loose: the renderer resizes to fit content via
@@ -489,7 +496,8 @@ export function createEditorWindow(query: Record<string, string> = {}): BrowserW
 		resizable: true,
 		alwaysOnTop: false,
 		skipTaskbar: false,
-		title: "OpenScreen",
+		title: PRODUCT_NAME,
+		icon: WINDOW_ICON,
 		backgroundColor: "#09090b",
 		show: false, // shown via ready-to-show to avoid white flash on first load
 		webPreferences: {
@@ -569,6 +577,8 @@ export function createSourceSelectorWindow(): BrowserWindow {
 	const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
 	const win = new BrowserWindow({
+		title: PRODUCT_NAME,
+		icon: WINDOW_ICON,
 		width: 680,
 		height: 580,
 		minHeight: 420,
@@ -613,6 +623,8 @@ export function createCountdownOverlayWindow(): BrowserWindow {
 	const overlayHeight = 260;
 
 	const win = new BrowserWindow({
+		title: PRODUCT_NAME,
+		icon: WINDOW_ICON,
 		width: overlayWidth,
 		height: overlayHeight,
 		minWidth: overlayWidth,
@@ -663,7 +675,8 @@ export function createNotesWindow(): BrowserWindow {
 		minHeight: 400,
 		maxWidth: 640,
 		maxHeight: 720,
-		title: "OpenScreen - Notes",
+		title: `${PRODUCT_NAME} - Notes`,
+		icon: WINDOW_ICON,
 		backgroundColor: "#09090b",
 		resizable: true,
 		alwaysOnTop: true,

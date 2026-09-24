@@ -61,8 +61,8 @@
 		"screens": "Bildschirme ({{count}})",
 		"windows": "Fenster ({{count}})",
 		"emptyTitle": "Keine Bildschirme oder Fenster gefunden",
-		"emptyDescription": "Wenn du die Berechtigung zur Bildschirmaufnahme gerade erteilt hast, lade diese Auswahl neu. Unter macOS musst du OpenScreen eventuell neu öffnen.",
-		"loadFailedDescription": "OpenScreen konnte die Aufnahmequellen nicht laden. Lade diese Auswahl neu und versuche es erneut.",
+		"emptyDescription": "Wenn du die Berechtigung zur Bildschirmaufnahme gerade erteilt hast, lade diese Auswahl neu. Unter macOS musst du Donqui Studio eventuell neu öffnen.",
+		"loadFailedDescription": "Donqui Studio konnte die Aufnahmequellen nicht laden. Lade diese Auswahl neu und versuche es erneut.",
 		"defaultSourceName": "Bildschirm"
 	},
 	"recording": {
@@ -74,13 +74,13 @@
 	"language": "Sprache",
 	"systemLanguagePrompt": {
 		"title": "Systemsprache verwenden?",
-		"description": "{{language}} wurde als deine Systemsprache erkannt. Soll OpenScreen auf {{language}} umgestellt werden?",
+		"description": "{{language}} wurde als deine Systemsprache erkannt. Soll Donqui Studio auf {{language}} umgestellt werden?",
 		"switch": "Zu {{language}} wechseln",
 		"keepDefault": "Aktuelle Sprache behalten"
 	},
 	"softwareEncoderFallback": {
 		"title": "Auf Software-Encoding umgestellt",
-		"description": "Der Standard-GPU-Encoder konnte nicht gestartet werden, deshalb ist OpenScreen auf Software-H.264-Encoding zurückgefallen. Die Aufnahme läuft normal weiter, die CPU-Auslastung kann aber höher sein.",
+		"description": "Der Standard-GPU-Encoder konnte nicht gestartet werden, deshalb ist Donqui Studio auf Software-H.264-Encoding zurückgefallen. Die Aufnahme läuft normal weiter, die CPU-Auslastung kann aber höher sein.",
 		"dismiss": "Verstanden",
 		"dontShowAgain": "Nicht mehr anzeigen"
 	},

@@ -306,6 +306,29 @@ export function projectRawTimelineSecToPlayback(
 	return landed ?? outCursor + Math.max(0, rawSec - lastRawEnd);
 }
 
+/** Inverse programme clock for soundtrack positions shown on the raw editing ruler.
+ * At a removed interval's boundary, choose the next kept frame. */
+export function projectPlaybackSecToRawTimeline(
+	clips: AxcutClip[],
+	trimRanges: AxcutTrimRange[],
+	playbackSec: number,
+	speedRegions: PlaybackSpeedRegion[] = [],
+): number {
+	const target = Math.max(0, playbackSec);
+	const rawEnd = clips.reduce((end, clip) => Math.max(end, clip.timelineEndSec), 0);
+	const outputEnd = projectRawTimelineSecToPlayback(clips, trimRanges, rawEnd, speedRegions);
+	if (target >= outputEnd) return rawEnd + target - outputEnd;
+	let low = 0;
+	let high = rawEnd;
+	for (let step = 0; step < 40; step++) {
+		const middle = (low + high) / 2;
+		if (projectRawTimelineSecToPlayback(clips, trimRanges, middle, speedRegions) <= target)
+			low = middle;
+		else high = middle;
+	}
+	return (low + high) / 2;
+}
+
 export function invertIntervals(intervals: Interval[], durationSec: number): Interval[] {
 	const cuts: Interval[] = [];
 	let cursor = 0;
@@ -377,10 +400,15 @@ function mapAllRegionCollections(
 		// pills unloadable.
 		audioTracks: separateAudioLanes(
 			reanchorAudioTracks(
-				fn(
-					document.audioTracks as unknown as StoredRegion[],
-					"audio",
-				) as unknown as AxcutDocument["audioTracks"],
+				[
+					...document.audioTracks.filter((track) => track.timelineLocked),
+					...(fn(
+						document.audioTracks.filter(
+							(track) => !track.timelineLocked,
+						) as unknown as StoredRegion[],
+						"audio",
+					) as unknown as AxcutDocument["audioTracks"]),
+				],
 				document.timeline.clips,
 				() => createId("audio"),
 			),

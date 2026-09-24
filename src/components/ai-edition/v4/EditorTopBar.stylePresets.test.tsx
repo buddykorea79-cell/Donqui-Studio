@@ -151,7 +151,7 @@ describe("Presets menu in the editor top bar", () => {
 		renderPane();
 		const menu = await openMenu();
 		const rows = within(menu).getAllByRole("menuitemradio");
-		expect(rows.map((row) => row.textContent)).toEqual(["OpenScreenBuilt-in", "Warm"]);
+		expect(rows.map((row) => row.textContent)).toEqual(["Donqui StudioBuilt-in", "Warm"]);
 		expect(state.presets.list).toHaveBeenCalledTimes(1);
 		// The built-in row manages nothing: only the saved one has a "⋯".
 		expect(screen.getAllByRole("button", { name: /^More actions for/ })).toHaveLength(1);
@@ -171,7 +171,7 @@ describe("Presets menu in the editor top bar", () => {
 		renderPane();
 		const menu = await openMenu();
 		expect(within(menu).getByRole("alert")).toHaveTextContent("Could not load presets");
-		expect(within(menu).getByRole("menuitemradio", { name: /OpenScreen/ })).toBeInTheDocument();
+		expect(within(menu).getByRole("menuitemradio", { name: /Donqui Studio/ })).toBeInTheDocument();
 		expect(within(menu).getByRole("menuitem", { name: "Create new preset…" })).toBeInTheDocument();
 	});
 
@@ -198,7 +198,7 @@ describe("Presets menu in the editor top bar", () => {
 		state.settings = { ...DEFAULT_EDITOR_SETTINGS, padding: 7 };
 		renderPane();
 		await openMenu();
-		fireEvent.click(screen.getByRole("menuitemradio", { name: /OpenScreen/ }));
+		fireEvent.click(screen.getByRole("menuitemradio", { name: /Donqui Studio/ }));
 		expect(state.set).toHaveBeenCalledTimes(1);
 		expect(state.set).toHaveBeenCalledWith(stylePresetPatch(factoryStylePresetAppearance()));
 	});
@@ -206,7 +206,7 @@ describe("Presets menu in the editor top bar", () => {
 	it("marks the row matching the current look", async () => {
 		renderPane();
 		await openMenu();
-		expect(screen.getByRole("menuitemradio", { name: /OpenScreen/ })).toHaveAttribute(
+		expect(screen.getByRole("menuitemradio", { name: /Donqui Studio/ })).toHaveAttribute(
 			"aria-checked",
 			"true",
 		);
@@ -223,7 +223,7 @@ describe("Presets menu in the editor top bar", () => {
 			"aria-checked",
 			"true",
 		);
-		expect(screen.getByRole("menuitemradio", { name: /OpenScreen/ })).toHaveAttribute(
+		expect(screen.getByRole("menuitemradio", { name: /Donqui Studio/ })).toHaveAttribute(
 			"aria-checked",
 			"false",
 		);

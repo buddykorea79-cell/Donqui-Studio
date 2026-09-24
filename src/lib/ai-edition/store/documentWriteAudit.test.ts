@@ -111,6 +111,8 @@ const WRITER_NAMES = {
 // ---------------------------------------------------------------------------
 
 const DECLARED: WritePath[] = [
+	// Direct subtitle creation is an explicit user edit.
+	w("src/components/ai-edition/NewEditorShell.tsx", "handleAddSubtitle", "save", "gesture"),
 	// Dropping the legacy auto-caption annotations is a button in the captions pane.
 	w(
 		"src/components/ai-edition/CaptionsPane.tsx",
@@ -166,6 +168,12 @@ const DECLARED: WritePath[] = [
 	w("src/components/ai-edition/NewEditorShell.tsx", "pasteRegion", "save", "gesture"),
 	// The window is closing and the user answered "save".
 	w("src/components/ai-edition/NewEditorShell.tsx", "unsubSaveBeforeClose", "save", "gesture"),
+	// Audio imports, settings, and removal are explicit edits in the Audio stage.
+	w("src/components/ai-edition/v4/AudioStage.tsx", "AudioTrackEditor", "save", "gesture"),
+	w("src/components/ai-edition/v4/AudioStage.tsx", "importAudio", "save", "gesture"),
+	w("src/components/ai-edition/v4/AudioStage.tsx", "save", "save", "gesture"),
+	// Rendered duration metadata precedes the separate, undoable timeline insertion.
+	w("src/components/ai-edition/v4/MediaClipBuilder.tsx", "createClip", "save", "automatic"),
 
 	// The agent's document. The optimistic write is not the edit — the save is, and
 	// it names the pre-agent document as what Ctrl+Z returns to.

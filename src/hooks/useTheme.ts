@@ -2,14 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "openscreen-theme";
+const STORAGE_KEY = "donqui-theme";
 
 function readStoredTheme(): Theme {
 	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
-		return raw === "dark" ? "dark" : "light";
+		// Preserve the previous brand's preference when upgrading. The effect writes
+		// it to the new key after mount, without deleting the older app's setting.
+		const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem("mangopang-theme");
+		return raw === "light" ? "light" : "dark";
 	} catch {
-		return "light";
+		return "dark";
 	}
 }
 

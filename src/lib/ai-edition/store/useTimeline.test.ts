@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/contexts/I18nContext";
 import type { AxcutDocument } from "../schema";
 import { axcutSchemaVersion } from "../schema";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
 import { useProjectStore } from "./projectStore";
 import { clearHistory, redo, undo } from "./undo";
 import { future, past } from "./undoStack";
@@ -186,6 +187,65 @@ describe("useTimeline.insertClipAt background duration probe", () => {
 			timelineStartSec: 10,
 			timelineEndSec: 15,
 		});
+	});
+
+	it("commits a detached duration probe after an earlier import without losing either change", async () => {
+		let finishProbe!: (duration: number) => void;
+		probeVideoDurationMock.mockReturnValue(
+			new Promise<number>((resolve) => {
+				finishProbe = resolve;
+			}),
+		);
+		const { result } = renderTimeline();
+		await act(async () => {
+			await result.current.insertClipAt("asset_2", 1);
+		});
+
+		let finishImport!: () => void;
+		const importDelay = new Promise<void>((resolve) => {
+			finishImport = resolve;
+		});
+		let importStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			importStarted = resolve;
+		});
+		const importedAsset = {
+			...sampleDoc.assets[0],
+			id: "imported_later",
+			originalPath: "/tmp/imported-later.mp4",
+		};
+		const importing = enqueueDocumentWrite(async () => {
+			const state = useProjectStore.getState();
+			const document = state.document;
+			if (!document) throw new Error("Missing fixture document");
+			// Like the native add response: a snapshot prepared before the asynchronous
+			// import completes, while the detached media probe is still running.
+			const imported = { ...document, assets: [...document.assets, importedAsset] };
+			importStarted();
+			await importDelay;
+			await state.saveDocument(imported, { history: false });
+		});
+		await started;
+		try {
+			await act(async () => {
+				finishProbe(5);
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			});
+			// The probe must not race the still-open import queue slot.
+			expect(bridgeMocks.save).toHaveBeenCalledTimes(1);
+		} finally {
+			await act(async () => {
+				finishImport();
+				await importing;
+				await enqueueDocumentWrite(() => undefined);
+			});
+		}
+		const document = useProjectStore.getState().document;
+		expect(document?.assets.some((asset) => asset.id === importedAsset.id)).toBe(true);
+		expect(document?.timeline.clips.find((clip) => clip.assetId === "asset_2")?.sourceEndSec).toBe(
+			5,
+		);
+		expect(document?.timeline.clips).toHaveLength(2);
 	});
 });
 

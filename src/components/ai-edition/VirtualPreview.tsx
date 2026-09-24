@@ -569,7 +569,7 @@ export function VirtualPreview({
 		const heads = new Map<string, string>();
 		const removed = removedRawSpans(clips, trimRanges);
 		for (const pill of collapseTracksToPills(audioTracks)) {
-			if (pill.kind !== "voiceover" || pill.loop) continue;
+			if (pill.kind !== "voiceover" || pill.loop || pill.timelineLocked) continue;
 			const groupId = trackGroupId(pill);
 			heads.set(groupId, pill.id);
 			pieces.set(groupId, takeProgramme(pill, removed));
@@ -684,31 +684,35 @@ export function VirtualPreview({
 			for (const track of audioTracksRef.current) {
 				const el = audioTrackElsRef.current.get(track.id);
 				if (!el) continue;
-				const outputStartSec = projectRawTimelineSecToPlayback(
-					clipsRef.current,
-					trimRangesRef.current,
-					track.startMs / 1000,
-					speedRegionsRef.current,
-				);
+				const outputStartSec = track.timelineLocked
+					? track.startMs / 1000
+					: projectRawTimelineSecToPlayback(
+							clipsRef.current,
+							trimRangesRef.current,
+							track.startMs / 1000,
+							speedRegionsRef.current,
+						);
 				// Length is measured WITHOUT speed, position WITH it. A trim REMOVES
 				// timeline — a track buried in one has zero length and stays silent,
 				// rather than playing its full raw length parked at the cut. A speed
 				// region only COMPRESSES: the track still holds all its audio and
 				// still plays at 1x, so it must not be cut short because the video
 				// under it was sped up.
-				const spanSec = Math.max(
-					0,
-					projectRawTimelineSecToPlayback(
-						clipsRef.current,
-						trimRangesRef.current,
-						track.endMs / 1000,
-					) -
-						projectRawTimelineSecToPlayback(
-							clipsRef.current,
-							trimRangesRef.current,
-							track.startMs / 1000,
-						),
-				);
+				const spanSec = track.timelineLocked
+					? (track.endMs - track.startMs) / 1000
+					: Math.max(
+							0,
+							projectRawTimelineSecToPlayback(
+								clipsRef.current,
+								trimRangesRef.current,
+								track.endMs / 1000,
+							) -
+								projectRawTimelineSecToPlayback(
+									clipsRef.current,
+									trimRangesRef.current,
+									track.startMs / 1000,
+								),
+						);
 				// A voiceover follows the cuts AND its own insertions, through one walk over
 				// its PILL. Every fragment but the head is silenced: the document keeps one
 				// per clip the take covers, and letting each play its own slice would put the

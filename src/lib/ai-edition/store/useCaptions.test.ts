@@ -80,7 +80,7 @@ const docB: AxcutDocument = {
 	project: { ...docA.project, id: "proj_b", title: "B" },
 };
 
-/** `fontSize` of the document a snapshot holds. 48 is the untouched default, so
+/** `fontSize` of the document a snapshot holds. 57 is the untouched default, so
  *  reading it back says "this is the pre-drag document" in one number. */
 const fontSizeOf = (doc: unknown) => getCaptionSettings(doc as AxcutDocument).fontSize;
 
@@ -130,7 +130,7 @@ describe("useCaptions drag snapshots", () => {
 		// A foreign snapshot costs more than the one bogus step: `undo` answers a
 		// projectId that is not the store's by clearing the whole stack.
 		expect(undo()).toBe(true);
-		expect(fontSizeOf(useProjectStore.getState().document)).toBe(48);
+		expect(fontSizeOf(useProjectStore.getState().document)).toBe(57);
 	});
 
 	it("does not hand a bare commit a base the edits since have already buried", async () => {
@@ -166,6 +166,6 @@ describe("useCaptions drag snapshots", () => {
 
 		expect(past).toHaveLength(1);
 		expect(undo()).toBe(true);
-		expect(fontSizeOf(useProjectStore.getState().document)).toBe(48);
+		expect(fontSizeOf(useProjectStore.getState().document)).toBe(57);
 	});
 });

@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 // Empty state for the editor's preview.
 //
 // Import video + load project + drag/drop on top of the project store: a
@@ -39,6 +40,7 @@ export function EditorEmptyState({
 	const t = useScopedT("editor");
 	const tc = useScopedT("common");
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
+	const [importBusy, setImportBusy] = useState(false);
 	const [dropError, setDropError] = useState<DropError>(null);
 	const lastDropErrorRef = useRef<Exclude<DropError, null>>("unsupported-format");
 	if (dropError !== null) {
@@ -56,21 +58,34 @@ export function EditorEmptyState({
 		return doc.project.id;
 	}, [createProject]);
 
-	const handleImportVideo = useCallback(async () => {
-		const result = await window.electronAPI?.openVideoFilePicker?.();
-		if (!result || result.canceled || !result.success || !result.path) return;
-		try {
-			const projectId = await ensureProject();
-			if (!projectId) return;
-			const label = result.name || result.path.split(/[\\/]/).pop() || "Recording";
-			await addAsset(result.path, label);
-		} catch (err) {
-			setDropError("load-failed");
-			// ponytail: surface as a console message only — the dialog above
-			// already tells the user something went wrong.
-			console.error("Failed to import video", err);
-		}
-	}, [addAsset, ensureProject]);
+	const handleImportVideo = useCallback(
+		async (photo = false) => {
+			if (importBusy) return;
+			setImportBusy(true);
+			try {
+				const result = photo
+					? await window.electronAPI?.openImageClipPicker?.(5)
+					: await window.electronAPI?.openVideoFilePicker?.();
+				if (!result || result.canceled) return;
+				if (!result.success || !result.path) {
+					if ("message" in result) toast.error(String(result.message));
+					return;
+				}
+				const projectId = await ensureProject();
+				if (!projectId) return;
+				const label = result.name || result.path.split(/[\\/]/).pop() || "Recording";
+				await addAsset(result.path, label);
+			} catch (err) {
+				setDropError("load-failed");
+				// ponytail: surface as a console message only — the dialog above
+				// already tells the user something went wrong.
+				console.error("Failed to import video", err);
+			} finally {
+				setImportBusy(false);
+			}
+		},
+		[addAsset, ensureProject, importBusy],
+	);
 
 	// A loaded project JSON is either a current AxcutDocument (has its own
 	// `schemaVersion`) or a legacy EditorProjectData that must be migrated.
@@ -174,7 +189,7 @@ export function EditorEmptyState({
 					<DialogHeader className={styles.previewEmptyDialogHeader}>
 						<div className={styles.previewEmptyDialogHeaderInner}>
 							<img
-								src="./openscreen.png"
+								src="./donqui.svg"
 								alt=""
 								aria-hidden="true"
 								className={styles.previewEmptyDialogLogo}
@@ -208,7 +223,7 @@ export function EditorEmptyState({
 			</Dialog>
 
 			<div className={styles.previewEmptyInner}>
-				<img src="./openscreen.png" alt="" aria-hidden="true" className={styles.previewEmptyLogo} />
+				<img src="./donqui.svg" alt="" aria-hidden="true" className={styles.previewEmptyLogo} />
 				<div className={styles.previewEmptyHeading}>
 					<h2 className={styles.previewEmptyTitle}>
 						{hasProject ? t("emptyState.titleHasAsset") : t("emptyState.title")}
@@ -220,11 +235,20 @@ export function EditorEmptyState({
 				<div className={styles.previewEmptyActions}>
 					<button
 						type="button"
+						disabled={importBusy}
 						onClick={() => void handleImportVideo()}
 						className={styles.previewEmptyPrimaryButton}
 					>
 						<Film className={styles.previewEmptyButtonIcon} />
 						{hasProject ? t("emptyState.importVideoButton") : t("emptyState.newProjectButton")}
+					</button>
+					<button
+						type="button"
+						disabled={importBusy}
+						onClick={() => void handleImportVideo(true)}
+						className={styles.previewEmptySecondaryButton}
+					>
+						{importBusy ? "미디어 준비 중…" : "사진으로 시작 (5초)"}
 					</button>
 					{showLoadProjectButton && !hasProject ? (
 						<button

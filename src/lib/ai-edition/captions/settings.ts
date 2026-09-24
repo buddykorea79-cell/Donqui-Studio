@@ -105,7 +105,7 @@ export const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {
 	enabled: false,
 	language: null,
 	captionLane: "recording",
-	fontSize: 48,
+	fontSize: 57,
 	fontFamily: "Inter",
 	fontWeight: "bold",
 	color: "#ffffff",
@@ -436,7 +436,12 @@ export function getCaptionSettings(
 
 	const minWords = Math.round(readNumber(raw.minWordsPerLine, d.minWordsPerLine, 1, 12));
 	const maxWords = Math.round(readNumber(raw.maxWordsPerLine, d.maxWordsPerLine, 1, 12));
-	const fontSize = readNumber(raw.fontSize, d.fontSize, 12, 200);
+	// Historical projects used 48px; preserve their geometry when migrating.
+	const legacySize =
+		typeof raw.verticalPosition === "string" ||
+		isFiniteNumber(raw.offsetY) ||
+		isFiniteNumber(raw.offsetX);
+	const fontSize = readNumber(raw.fontSize, legacySize ? 48 : d.fontSize, 12, 200);
 	const backgroundEnabled = readBoolean(raw.backgroundEnabled, d.backgroundEnabled);
 
 	// New fields win whenever they are present, so the migration runs once and is inert

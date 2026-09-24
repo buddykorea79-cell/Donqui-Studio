@@ -71,6 +71,16 @@ import {
 	createSourceSelectorWindow,
 } from "./windows";
 
+app.setName(PRODUCT_NAME);
+// Keep the existing profile directory: it contains project references, cached
+// image clips and encrypted provider settings. A display-name change must not
+// make that data disappear. New isolated test profiles can use DONQUI_USER_DATA.
+app.setPath(
+	"userData",
+	(!app.isPackaged && (process.env.DONQUI_USER_DATA || process.env.MANGOPANG_USER_DATA)) ||
+		path.join(app.getPath("appData"), "MangopangStudio"),
+);
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // CLI mode: `openscreen export|record|info|help ...` runs headless without
@@ -148,7 +158,7 @@ const isMac = process.platform === "darwin";
 const trayIconSize = isMac ? 16 : 24;
 
 // Tray Icons
-const defaultTrayIcon = getTrayIcon("openscreen.png", trayIconSize);
+const defaultTrayIcon = getTrayIcon("donqui.png", trayIconSize);
 const recordingTrayIcon = getTrayIcon("rec-button.png", trayIconSize);
 
 function createWindow() {
@@ -229,7 +239,7 @@ function setupApplicationMenu() {
 			submenu: [
 				{
 					role: "about",
-					label: mainT("common", "actions.about") || "About OpenScreen",
+					label: mainT("common", "actions.about") || `About ${PRODUCT_NAME}`,
 				},
 				{ type: "separator" as const },
 				{
@@ -255,7 +265,7 @@ function setupApplicationMenu() {
 				{ type: "separator" },
 				{
 					role: "hide",
-					label: mainT("common", "actions.hide") || "Hide OpenScreen",
+					label: mainT("common", "actions.hide") || `Hide ${PRODUCT_NAME}`,
 				},
 				{
 					role: "hideOthers",
@@ -391,7 +401,7 @@ function setupApplicationMenu() {
 						]
 					: []),
 				{
-					label: mainT("common", "actions.about") || "About OpenScreen",
+					label: mainT("common", "actions.about") || `About ${PRODUCT_NAME}`,
 					click: runAboutDialog,
 				},
 				{ type: "separator" as const },
@@ -442,7 +452,10 @@ let updateCheckAbort: AbortController | null = null;
  *  the install, i.e. after a 240 MB download has already competed with the encoder. Every
  *  surface is rebuilt when the flag flips (see `setupApplicationMenu`/`updateTrayMenu`). */
 function canOfferUpdateCheck(): boolean {
-	return offersUpdateCheck(getInstallChannel(), { recording: isRecording });
+	return (
+		app.getName() !== PRODUCT_NAME &&
+		offersUpdateCheck(getInstallChannel(), { recording: isRecording })
+	);
 }
 
 /** What the HUD is told at mount, and only the permanent half of the veto. The recording half
@@ -451,7 +464,7 @@ function canOfferUpdateCheck(): boolean {
  *  mount mid-take — and the HUD is rebuilt for every recording. The renderer applies the
  *  transient half itself; `check-for-updates` still enforces both. */
 function channelAllowsUpdateCheck(): boolean {
-	return !platformOwnsUpdates(getInstallChannel());
+	return app.getName() !== PRODUCT_NAME && !platformOwnsUpdates(getInstallChannel());
 }
 
 /** Message boxes must be owned by a window. The HUD is `alwaysOnTop` and `skipTaskbar`
@@ -487,6 +500,7 @@ function configureAboutPanel() {
 	const facts = aboutFacts();
 	app.setAboutPanelOptions({
 		applicationName: PRODUCT_NAME,
+		iconPath: path.join(process.env.VITE_PUBLIC || RENDERER_DIST, "donqui.png"),
 		applicationVersion: facts.version,
 		// Rendered in parentheses after the version, where a build number would go. The install
 		// channel is worth more there than a second copy of the version.
@@ -520,7 +534,7 @@ async function presentAboutDialog() {
 	const heading = `${PRODUCT_NAME} ${facts.version}`;
 	const choice = await showMessageBox({
 		type: "info",
-		title: mainT("common", "actions.about") || "About OpenScreen",
+		title: mainT("common", "actions.about") || `About ${PRODUCT_NAME}`,
 		message: heading,
 		detail,
 		buttons: [
@@ -718,7 +732,7 @@ async function runBackgroundUpdateCheck() {
 }
 
 function startBackgroundUpdateTimer() {
-	if (backgroundUpdateTimer) return;
+	if (app.getName() === PRODUCT_NAME || backgroundUpdateTimer) return;
 	if (
 		!shouldStartBackgroundUpdateTimer({
 			isPackaged: app.isPackaged,
@@ -909,10 +923,10 @@ function updateTrayMenu(recording: boolean = false) {
 				isMac
 					? {
 							role: "about" as const,
-							label: mainT("common", "actions.about") || "About OpenScreen",
+							label: mainT("common", "actions.about") || `About ${PRODUCT_NAME}`,
 						}
 					: {
-							label: mainT("common", "actions.about") || "About OpenScreen",
+							label: mainT("common", "actions.about") || `About ${PRODUCT_NAME}`,
 							click: runAboutDialog,
 						},
 				// Right next to About, and reachable without opening any window: this is the
@@ -1331,5 +1345,5 @@ appReady?.then(async () => {
 		return;
 	}
 
-	createWindow();
+	createEditorWindowWrapper();
 });

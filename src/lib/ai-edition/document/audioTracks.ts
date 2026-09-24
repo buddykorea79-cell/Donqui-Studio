@@ -45,6 +45,9 @@ export function anchorAudioTrackFragments(
 	clips: AxcutClip[],
 	makeId: () => string,
 ): AxcutAudioTrack[] {
+	if (track.timelineLocked) {
+		return [{ ...track, clipId: undefined, sourceStartSec: undefined, sourceEndSec: undefined }];
+	}
 	const groupId = trackGroupId(track);
 	const anchored = anchorRegionsWithDerivedMs([track], clips, makeId) as AxcutAudioTrack[];
 	if (anchored.length === 0) return [];
@@ -115,6 +118,7 @@ function takesJoin(left: AxcutAudioTrack, right: AxcutAudioTrack): boolean {
 	return (
 		left.assetId === right.assetId &&
 		left.kind === right.kind &&
+		left.timelineLocked === right.timelineLocked &&
 		!left.loop &&
 		!right.loop &&
 		left.gainDb === right.gainDb &&

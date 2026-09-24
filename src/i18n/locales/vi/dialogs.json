@@ -80,13 +80,13 @@
 		"saveVideo": "Lưu Video đã xuất",
 		"selectVideo": "Chọn tệp video",
 		"selectAudio": "Chọn tệp âm thanh",
-		"saveProject": "Lưu dự án OpenScreen",
-		"openProject": "Mở dự án OpenScreen",
+		"saveProject": "Lưu dự án Donqui Studio",
+		"openProject": "Mở dự án Donqui Studio",
 		"gifImage": "Hình ảnh GIF",
 		"mp4Video": "Video MP4",
 		"videoFiles": "Tệp Video",
 		"audioFiles": "Tệp âm thanh",
-		"openscreenProject": "Dự án OpenScreen",
+		"openscreenProject": "Dự án Donqui Studio",
 		"allFiles": "Tất cả các tệp"
 	}
 }

@@ -80,13 +80,13 @@
 		"saveVideo": "Exportiertes Video speichern",
 		"selectVideo": "Videodatei auswählen",
 		"selectAudio": "Audiodatei auswählen",
-		"saveProject": "OpenScreen-Projekt speichern",
-		"openProject": "OpenScreen-Projekt öffnen",
+		"saveProject": "Donqui Studio-Projekt speichern",
+		"openProject": "Donqui Studio-Projekt öffnen",
 		"gifImage": "GIF-Bild",
 		"mp4Video": "MP4-Video",
 		"videoFiles": "Videodateien",
 		"audioFiles": "Audiodateien",
-		"openscreenProject": "OpenScreen-Projekt",
+		"openscreenProject": "Donqui Studio-Projekt",
 		"allFiles": "Alle Dateien"
 	}
 }

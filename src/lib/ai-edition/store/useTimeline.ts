@@ -43,7 +43,9 @@ import {
 } from "../timeline/timelineMap";
 import { dropTrimPillsByIds, resolveTimelineSpanToTrim } from "../timeline/trim-mapping";
 import type { AutoZoomSuggestion } from "../timeline/zoom-suggestions";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
 import { useProjectStore, waitForDocumentSaves } from "./projectStore";
+import { currentWriteEpoch } from "./undoStack";
 
 // How long a region lasts when the caller doesn't say. The timeline's toolbar
 // passes its own duration instead, derived from the current zoom so the new pill
@@ -222,38 +224,42 @@ export function useTimeline() {
 				if (entry.video || entry.camera) probed[a.id] = entry;
 			}
 			if (Object.keys(probed).length === 0) return;
-			// The store only takes a document once its save returns, so a write still in flight
-			// (the fresh-recording auto-zooms, typically) is invisible here. Building on the store
-			// before it lands and saving after it would erase it. Wait it out; on a timeout,
-			// write nothing and let a later run probe again.
-			if ((await waitForDocumentSaves()) === "timeout") {
-				for (const id of Object.keys(probed)) probedAssetIdsRef.current.delete(id);
-				return;
-			}
-			// Re-read fresh state so a concurrent edit made while probing isn't stomped.
-			const current = useProjectStore.getState().document;
-			if (!current || current.project.id !== originatingProjectId) return;
-			// `history: false` — see the comment above: a backfill nobody asked for must
-			// not become the thing the next Ctrl+Z reverses.
-			await useProjectStore.getState().saveDocument(
-				{
-					...current,
-					assets: current.assets.map((a) => {
-						const found = probed[a.id];
-						if (!found) return a;
-						return {
-							...a,
-							...(found.video
-								? { video: { codec: "unknown", fps: 0, ...a.video, ...found.video } }
-								: {}),
-							...(found.camera && a.cameraTrack
-								? { cameraTrack: { ...a.cameraTrack, ...found.camera } }
-								: {}),
-						};
-					}),
-				},
-				{ history: false },
-			);
+			// Share the duration/import commit queue; an idle-save check alone lets
+			// two probes both read the same snapshot before either starts saving.
+			return enqueueDocumentWrite(async () => {
+				// The store only takes a document once its save returns, so a write still in flight
+				// (the fresh-recording auto-zooms, typically) is invisible here. Building on the store
+				// before it lands and saving after it would erase it. Wait it out; on a timeout,
+				// write nothing and let a later run probe again.
+				if ((await waitForDocumentSaves()) === "timeout") {
+					for (const id of Object.keys(probed)) probedAssetIdsRef.current.delete(id);
+					return;
+				}
+				// Re-read fresh state so a concurrent edit made while probing isn't stomped.
+				const current = useProjectStore.getState().document;
+				if (!current || current.project.id !== originatingProjectId) return;
+				// `history: false` — see the comment above: a backfill nobody asked for must
+				// not become the thing the next Ctrl+Z reverses.
+				await useProjectStore.getState().saveDocument(
+					{
+						...current,
+						assets: current.assets.map((a) => {
+							const found = probed[a.id];
+							if (!found) return a;
+							return {
+								...a,
+								...(found.video
+									? { video: { codec: "unknown", fps: 0, ...a.video, ...found.video } }
+									: {}),
+								...(found.camera && a.cameraTrack
+									? { cameraTrack: { ...a.cameraTrack, ...found.camera } }
+									: {}),
+							};
+						}),
+					},
+					{ history: false },
+				);
+			});
 		})();
 	}, [document]);
 
@@ -1104,6 +1110,8 @@ export function useTimeline() {
 	// subsequent inserts use the cached value without re-probing.
 	const probeAndCorrectClip = useCallback(
 		async (assetId: string, clipId: string, originalPath: string) => {
+			const originatingProjectId = useProjectStore.getState().projectId;
+			const epoch = currentWriteEpoch();
 			const fileUrl = toFileUrl(originalPath);
 			// Dims probed alongside duration — otherwise `asset.video` stays permanently unset for
 			// most recordings (nothing else populates it), silently breaking anything that reads
@@ -1112,65 +1120,73 @@ export function useTimeline() {
 				probeVideoDuration(fileUrl),
 				probeVideoDimensions(fileUrl),
 			]);
-			const state = useProjectStore.getState();
-			const doc = state.document;
-			if (!doc) return;
-			const asset = doc.assets.find((a) => a.id === assetId);
-			const needsDims = probedDims != null && !asset?.video;
-			if (probedDuration == null && !needsDims) return;
+			// Only the commit enters the shared queue. The probe remains detached from
+			// insertion, so it cannot wait for a queue slot held by its own caller.
+			return enqueueDocumentWrite(async () => {
+				if ((await waitForDocumentSaves()) !== "idle") return;
+				const state = useProjectStore.getState();
+				const doc = state.document;
+				if (!doc || state.projectId !== originatingProjectId || currentWriteEpoch() !== epoch)
+					return;
+				const asset = doc.assets.find((a) => a.id === assetId);
+				const needsDims = probedDims != null && !asset?.video;
+				if (probedDuration == null && !needsDims) return;
 
-			// Guard: only correct clips still sitting at the 0..60s placeholder.
-			// If the user has since trimmed the clip or moved on, leave it alone.
-			const clip = doc.timeline.clips.find((c) => c.id === clipId);
-			const stillPlaceholder =
-				clip != null &&
-				clip.sourceStartSec === 0 &&
-				Math.abs((clip.sourceEndSec ?? 0) - PLACEHOLDER_DURATION_SEC) < 0.01;
-			const correctDuration = probedDuration != null && stillPlaceholder;
-			if (!correctDuration && !needsDims) return;
+				// Guard: only correct clips still sitting at the 0..60s placeholder.
+				// If the user has since trimmed the clip or moved on, leave it alone.
+				const clip = doc.timeline.clips.find((c) => c.id === clipId);
+				const stillPlaceholder =
+					clip != null &&
+					clip.sourceStartSec === 0 &&
+					Math.abs((clip.sourceEndSec ?? 0) - PLACEHOLDER_DURATION_SEC) < 0.01;
+				const correctDuration = probedDuration != null && stillPlaceholder;
+				if (!correctDuration && !needsDims) return;
 
-			// Only correct the probed clip's own length here — do NOT hand-shift
-			// every sibling by the delta, since that has no notion of which clips
-			// sit before vs. after this one in timeline order (it used to shift
-			// earlier clips too, corrupting their positions). resequenceClips lays
-			// everything back-to-back from t=0 using each clip's own (now correct)
-			// length, so it's the correct + already-shared way to renormalize.
-			const oldClips = doc.timeline.clips;
-			const nextClips = correctDuration
-				? resequenceClips(
-						oldClips.map((c) =>
-							c.id === clipId
-								? {
-										...c,
-										sourceEndSec: probedDuration as number,
-										timelineEndSec: c.timelineStartSec + (probedDuration as number),
-									}
-								: c,
-						),
-					)
-				: oldClips;
-			const nextAssets = doc.assets.map((a) => {
-				if (a.id !== assetId) return a;
-				return {
-					...a,
-					...(correctDuration ? { durationSec: probedDuration as number } : {}),
-					...(needsDims ? { video: { codec: "unknown", fps: 0, ...a.video, ...probedDims } } : {}),
-				};
+				// Only correct the probed clip's own length here — do NOT hand-shift
+				// every sibling by the delta, since that has no notion of which clips
+				// sit before vs. after this one in timeline order (it used to shift
+				// earlier clips too, corrupting their positions). resequenceClips lays
+				// everything back-to-back from t=0 using each clip's own (now correct)
+				// length, so it's the correct + already-shared way to renormalize.
+				const oldClips = doc.timeline.clips;
+				const nextClips = correctDuration
+					? resequenceClips(
+							oldClips.map((c) =>
+								c.id === clipId
+									? {
+											...c,
+											sourceEndSec: probedDuration as number,
+											timelineEndSec: c.timelineStartSec + (probedDuration as number),
+										}
+									: c,
+							),
+						)
+					: oldClips;
+				const nextAssets = doc.assets.map((a) => {
+					if (a.id !== assetId) return a;
+					return {
+						...a,
+						...(correctDuration ? { durationSec: probedDuration as number } : {}),
+						...(needsDims
+							? { video: { codec: "unknown", fps: 0, ...a.video, ...probedDims } }
+							: {}),
+					};
+				});
+				// `history: false`. Nothing about this write is a user action: `addAsset` never
+				// populates `durationSec`, so EVERY freshly imported asset lands at the 60s
+				// placeholder and fires this probe. Recording it put a placeholder-length clip
+				// on the undo stack a beat after the drop, so the first Ctrl+Z snapped the clip
+				// back to 60s instead of removing it — and a probe resolving after the user
+				// had already undone wiped `future`, destroying redo from a background write.
+				await state.saveDocument(
+					{
+						...doc,
+						assets: nextAssets,
+						timeline: { ...doc.timeline, clips: nextClips },
+					},
+					{ history: false },
+				);
 			});
-			// `history: false`. Nothing about this write is a user action: `addAsset` never
-			// populates `durationSec`, so EVERY freshly imported asset lands at the 60s
-			// placeholder and fires this probe. Recording it put a placeholder-length clip
-			// on the undo stack a beat after the drop, so the first Ctrl+Z snapped the clip
-			// back to 60s instead of removing it — and a probe resolving after the user
-			// had already undone wiped `future`, destroying redo from a background write.
-			await state.saveDocument(
-				{
-					...doc,
-					assets: nextAssets,
-					timeline: { ...doc.timeline, clips: nextClips },
-				},
-				{ history: false },
-			);
 		},
 		[],
 	);

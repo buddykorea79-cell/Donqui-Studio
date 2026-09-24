@@ -206,6 +206,7 @@ export function deriveCaptionCues(
 		// never through the schema — simply has none.
 		document.audioTracks ?? [],
 		removedRawSpans(document.timeline.clips, document.timeline.trimRanges),
+		document,
 	);
 	if (placements.length === 0) return [];
 

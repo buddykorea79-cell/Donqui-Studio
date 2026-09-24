@@ -134,7 +134,7 @@
 	"stylePresets": {
 		"button": "Presets",
 		"menuLabel": "Style presets",
-		"factoryName": "OpenScreen",
+		"factoryName": "Donqui Studio",
 		"factoryBadge": "Built-in",
 		"empty": "No saved presets yet",
 		"create": "Create new preset…",

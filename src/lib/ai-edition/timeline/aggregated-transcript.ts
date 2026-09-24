@@ -15,8 +15,15 @@
 // kept word; the user or the LLM decides what to mark as skipped.
 
 import { collapseTracksToPills } from "../document/audioTracks";
-import type { AxcutAsset, AxcutAudioTrack, AxcutClip, AxcutTranscript, AxcutWord } from "../schema";
-import { type RawSpan, type RemovedRawSpan, removalAt } from "./programme-time";
+import type {
+	AxcutAsset,
+	AxcutAudioTrack,
+	AxcutClip,
+	AxcutDocument,
+	AxcutTranscript,
+	AxcutWord,
+} from "../schema";
+import { keptRawSpans, type RawSpan, type RemovedRawSpan, removalAt } from "./programme-time";
 import { takeProgramme } from "./take-programme";
 
 /**
@@ -43,6 +50,10 @@ export interface TranscriptPlacement {
 	/** Where the window lands on the RAW ruler. Source time is per asset, so this is
 	 *  the only thing that turns a word back into a moment the playhead can seek to. */
 	timelineStartSec: number;
+	/** Locked narration plays at 1x while its picture can play at another rate. */
+	rawSecondsPerSourceSecond?: number;
+	/** A visual cut never removes words from an independently timed narration bed. */
+	timelineLocked?: boolean;
 }
 
 /** Which lane's speech the transcript tab is reading. */
@@ -56,7 +67,10 @@ export type TranscriptLane = "recording" | "voiceover";
  * and not in source time (issue #560).
  */
 export function placementRawSec(placement: TranscriptPlacement, sourceSec: number): number {
-	return placement.timelineStartSec + (sourceSec - placement.sourceStartSec);
+	return (
+		placement.timelineStartSec +
+		(sourceSec - placement.sourceStartSec) * (placement.rawSecondsPerSourceSecond ?? 1)
+	);
 }
 
 /** The placement's own stretch of raw ruler, or null when it runs open-ended. */
@@ -225,7 +239,9 @@ export function buildClipSection(
 	const tagged: ClipWord[] = words.map((word) => {
 		// The word's CENTRE, mirroring the rule the identity filter used, so the recording
 		// lane's tagging does not shift under this change.
-		const covering = removalAt(removed, placementRawSec(clip, (word.startSec + word.endSec) / 2));
+		const covering = clip.timelineLocked
+			? null
+			: removalAt(removed, placementRawSec(clip, (word.startSec + word.endSec) / 2));
 		return {
 			id: clipWordId(clip.id, word.id),
 			word,
@@ -304,41 +320,124 @@ export function buildAggregatedSections(
 	);
 }
 
+/** One linear portion of the picture's raw ruler and programme clock. */
+interface NarrationClockSpan {
+	rawStartSec: number;
+	programmeStartSec: number;
+	programmeEndSec: number;
+	speed: number;
+}
+
+/** Split the film at cuts and speed boundaries so each source→raw mapping is linear. */
+function narrationClockSpans(
+	document: Pick<AxcutDocument, "timeline" | "legacyEditor">,
+): NarrationClockSpan[] {
+	const stored = document.legacyEditor?.speedRegions;
+	const speeds = Array.isArray(stored)
+		? stored.filter(
+				(region): region is { startMs: number; endMs: number; speed: number } =>
+					region !== null &&
+					typeof region === "object" &&
+					Number.isFinite(region.startMs) &&
+					Number.isFinite(region.endMs) &&
+					Number.isFinite(region.speed) &&
+					region.speed > 0,
+			)
+		: [];
+	const spans: NarrationClockSpan[] = [];
+	let programmeSec = 0;
+	let rawEndSec = 0;
+	for (const kept of keptRawSpans(document.timeline.clips, document.timeline.trimRanges)) {
+		const boundaries = new Set([kept.startSec, kept.endSec]);
+		for (const region of speeds) {
+			for (const boundary of [region.startMs / 1000, region.endMs / 1000]) {
+				if (boundary > kept.startSec && boundary < kept.endSec) boundaries.add(boundary);
+			}
+		}
+		const edges = [...boundaries].sort((a, b) => a - b);
+		for (let index = 0; index < edges.length - 1; index++) {
+			const from = edges[index];
+			const to = edges[index + 1];
+			const midpointMs = ((from + to) / 2) * 1000;
+			const speed =
+				speeds.find((region) => midpointMs >= region.startMs && midpointMs < region.endMs)?.speed ??
+				1;
+			const end = programmeSec + (to - from) / speed;
+			spans.push({
+				rawStartSec: from,
+				programmeStartSec: programmeSec,
+				programmeEndSec: end,
+				speed,
+			});
+			programmeSec = end;
+		}
+		rawEndSec = kept.endSec;
+	}
+	// Keep the audio-only transcript and any unfilmed tail readable, as with ordinary takes.
+	spans.push({
+		rawStartSec: rawEndSec,
+		programmeStartSec: programmeSec,
+		programmeEndSec: Infinity,
+		speed: 1,
+	});
+	return spans;
+}
+
+function lockedNarrationPlacements(
+	pill: AxcutAudioTrack,
+	clock: NarrationClockSpan[] | undefined,
+): TranscriptPlacement[] {
+	const spans = clock ?? [
+		{ rawStartSec: 0, programmeStartSec: 0, programmeEndSec: Infinity, speed: 1 },
+	];
+	const placements: TranscriptPlacement[] = [];
+	for (const span of spans) {
+		const start = Math.max(pill.startMs / 1000, span.programmeStartSec);
+		const end = Math.min(pill.endMs / 1000, span.programmeEndSec);
+		if (end <= start) continue;
+		placements.push({
+			id: placements.length === 0 ? pill.id : `${pill.id}#${placements.length}`,
+			assetId: pill.assetId,
+			sourceStartSec: pill.offsetMs / 1000 + start - pill.startMs / 1000,
+			sourceEndSec: pill.offsetMs / 1000 + end - pill.startMs / 1000,
+			timelineStartSec: span.rawStartSec + (start - span.programmeStartSec) * span.speed,
+			rawSecondsPerSourceSecond: span.speed,
+			timelineLocked: true,
+		});
+	}
+	return placements;
+}
+
 /**
- * The voiceover lane as placements, in timeline order.
- *
- * Music is excluded here rather than filtered downstream: it is not transcribed at
- * all (STT on a bed is noise we pay for), so a music placement could only ever
- * produce an empty section that reads as a failed transcription.
- *
- * One placement per PLAY PIECE of the take's own walk: a cut under the take splits it into
- * stretches that sit at different raw moments, and a placement is one uninterrupted shift.
- *
- * A LOOPING take contributes nothing at all. `anchorAudioTrackFragments` deliberately
- * does not advance `offsetMs` across the fragments of a looping track, so their words map
- * to raw moments the words do not occupy — a placement built from them would read
- * kept-or-removed on false evidence, and would author a cut in the wrong place.
+ * Narration placements on the raw ruler. Ordinary takes follow cuts in the picture;
+ * locked takes preserve their programme clock and split only to map it back to raw.
+ * Music and looping takes have no unambiguous speech transcript placement.
  */
 export function voiceoverPlacements(
 	audioTracks: AxcutAudioTrack[],
 	/** What the film no longer contains. Empty is the honest default: with no cuts the walk
 	 *  yields one piece per take, which is what this always produced. */
 	removed: readonly RemovedRawSpan[] = [],
+	/** Needed to put programme-timed narration back onto the raw transcript/caption ruler. */
+	document?: Pick<AxcutDocument, "timeline" | "legacyEditor">,
 ): TranscriptPlacement[] {
+	const clock = document ? narrationClockSpans(document) : undefined;
 	return collapseTracksToPills(audioTracks)
 		.filter((pill) => pill.kind === "voiceover" && !pill.loop)
 		.sort((a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id))
 		.flatMap((pill) =>
-			takeProgramme(pill, removed)
-				.filter((piece) => piece.kind === "play")
-				.map((piece, i) => ({
-					// Namespaced by piece so two stretches of one take never collide on a word id.
-					id: i === 0 ? pill.id : `${pill.id}#${i}`,
-					assetId: pill.assetId,
-					sourceStartSec: piece.sourceStartSec,
-					sourceEndSec: piece.sourceEndSec,
-					timelineStartSec: piece.rawStartSec,
-				})),
+			pill.timelineLocked
+				? lockedNarrationPlacements(pill, clock)
+				: takeProgramme(pill, removed)
+						.filter((piece) => piece.kind === "play")
+						.map((piece, i) => ({
+							// Namespaced by piece so two stretches of one take never collide on a word id.
+							id: i === 0 ? pill.id : `${pill.id}#${i}`,
+							assetId: pill.assetId,
+							sourceStartSec: piece.sourceStartSec,
+							sourceEndSec: piece.sourceEndSec,
+							timelineStartSec: piece.rawStartSec,
+						})),
 		);
 }
 
@@ -348,8 +447,9 @@ export function lanePlacements(
 	clips: AxcutClip[],
 	audioTracks: AxcutAudioTrack[],
 	removed: readonly RemovedRawSpan[] = [],
+	document?: Pick<AxcutDocument, "timeline" | "legacyEditor">,
 ): TranscriptPlacement[] {
-	return lane === "voiceover" ? voiceoverPlacements(audioTracks, removed) : clips;
+	return lane === "voiceover" ? voiceoverPlacements(audioTracks, removed, document) : clips;
 }
 
 /**
@@ -396,7 +496,9 @@ export function findCueWordId(sections: ClipSection[], rawSec: number | null): s
 	if (!match) return null;
 
 	// Back to the placement's own source clock, which is what the words are stamped in.
-	const t = match.clip.sourceStartSec + (rawSec - match.clip.timelineStartSec);
+	const t =
+		match.clip.sourceStartSec +
+		(rawSec - match.clip.timelineStartSec) / (match.clip.rawSecondsPerSourceSecond ?? 1);
 	let previous: string | null = null;
 	for (const cw of match.words) {
 		if (isSilenceWord(cw.word)) continue;

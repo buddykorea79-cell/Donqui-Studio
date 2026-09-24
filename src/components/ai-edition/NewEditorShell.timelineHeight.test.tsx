@@ -38,16 +38,24 @@ import {
 } from "./NewEditorShell";
 
 function renderShell() {
-	return render(
+	const view = render(
 		<EditorDialogsProvider>
 			<NewEditorShell />
 		</EditorDialogsProvider>,
 	);
+	// The raw timeline belongs to Edit; Audio has its own programme seekbar.
+	fireEvent.click(view.getByRole("tab", { name: "topbar.modes.edit" }));
+	return view;
 }
 
 describe("NewEditorShell timeline height", () => {
 	beforeEach(() => {
 		localStorage.clear();
+		useProjectStore.setState({
+			document: createEmptyDocument({ projectId: "p", title: "Timeline" }),
+			currentTimeSec: 0,
+			playing: false,
+		});
 		(window as unknown as { electronAPI?: unknown }).electronAPI = {
 			onAiEditionChatEvent: () => () => {
 				/* unsubscribe */
@@ -93,6 +101,7 @@ describe("NewEditorShell timeline height", () => {
 	afterEach(() => {
 		cleanup();
 		localStorage.clear();
+		useProjectStore.setState({ document: null });
 	});
 
 	it("exports expected constants allowing all lanes to fit without vertical clipping", () => {

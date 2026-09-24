@@ -1,9 +1,9 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.etiennelescot.openscreen",
+  "appId": "studio.donqui.app",
   "asar": true,
-  "productName": "Openscreen",
+  "productName": "Donqui Studio",
   // There is deliberately no `electronVersion` here. electron-builder needs an EXACT
   // version because it downloads the binaries for one release, and it takes that from
   // package.json's `electron` devDependency, which is pinned without a caret for this
@@ -21,27 +21,8 @@
   // LICENSE it ships alongside does not make. Any other surface that renders this line must
   // repeat it byte-for-byte.
   "copyright": "© 2025-2026 OpenScreen contributors — MIT License",
-  // Declared explicitly, NOT to start publishing from CI — every build still passes
-  // `--publish never`, which suppresses uploading only. What this turns on is the update
-  // METADATA: `latest.yml` / `latest-mac.yml` / `latest-linux.yml`, the `.blockmap` used for
-  // differential downloads, `app-update.yml` inside resources, and the `package-type` marker
-  // in deb/rpm/pacman that tells electron-updater which installer to run.
-  //
-  // Some of that was already being produced, because app-builder-lib falls back to inferring
-  // the provider from `.git/config`'s origin when no publish config is declared — which works
-  // in CI and silently stops working for anyone building from a source tarball. Declaring it
-  // (plus `repository` in package.json) makes it deterministic instead of incidental.
-  //
-  // The Store (appx) target deliberately gets NO publish config: `isSuitableWindowsTarget()`
-  // only writes `app-update.yml` for nsis, so the MSIX build cannot arm an updater that its
-  // read-only container could never run. Do not add `appx.electronUpdaterAware`.
-  "publish": [
-    {
-      "provider": "github",
-      "owner": "getopenscreen",
-      "repo": "openscreen"
-    }
-  ],
+  // This independent fork must never publish to or update from OpenScreen releases.
+  "publish": null,
   // Fails the build when compositor_view.node is older than the crates/ Rust sources. Plain
   // `npm run build` does not rebuild the addon, and a stale one fails SILENTLY at runtime
   // (unknown scene fields are #[serde(default)]) rather than erroring. See the script header
@@ -141,6 +122,10 @@
     {
       "from": "public/mediapipe",
       "to": "mediapipe"
+    },
+    {
+      "from": "dist-remotion",
+      "to": "remotion"
     }
   ],
 
@@ -174,7 +159,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "icons/icons/mac/icon.icns",
+    "icon": "icons/donqui/mac/icon.icns",
     "artifactName": "${productName}-Mac-${arch}-${version}-Installer.${ext}",
     "extraResources": [
       {
@@ -184,10 +169,10 @@
       }
     ],
     "extendInfo": {
-      "NSAudioCaptureUsageDescription": "OpenScreen needs audio capture permission to record system audio.",
-      "NSMicrophoneUsageDescription": "OpenScreen needs microphone access to record voice audio.",
-      "NSCameraUsageDescription": "OpenScreen needs camera access to record webcam video.",
-      "NSScreenCaptureUsageDescription": "OpenScreen needs screen recording permission to detect and capture windows.",
+      "NSAudioCaptureUsageDescription": "Donqui Studio needs audio capture permission to record system audio.",
+      "NSMicrophoneUsageDescription": "Donqui Studio needs microphone access to record voice audio.",
+      "NSCameraUsageDescription": "Donqui Studio needs camera access to record webcam video.",
+      "NSScreenCaptureUsageDescription": "Donqui Studio needs screen recording permission to detect and capture windows.",
       "NSCameraUseContinuityCameraDeviceType": true
     }
   },
@@ -203,7 +188,7 @@
       "pacman",
       "rpm"
     ],
-    "icon": "icons/icons/png",
+    "icon": "icons/donqui/png",
     "artifactName": "${productName}-Linux-${version}.${ext}",
     "maintainer": "Etienne Lescot <etiennelescot@gmail.com>",
     "category": "AudioVideo",
@@ -380,7 +365,7 @@
     "target": [
       "nsis"
     ],
-    "icon": "icons/icons/win/icon.ico",
+    "icon": "icons/donqui/win/icon.ico",
     "artifactName": "${productName}.Setup.${version}.${ext}",
     "extraResources": [
       {
@@ -416,14 +401,13 @@
     "oneClick": false,
     "allowToChangeInstallationDirectory": true
   },
-  // Microsoft Store packaging identity, from Partner Center's "Product identity" page
-  // (Applications et jeux > OpenScreen > Product identity).
+  // Local fork identity. A Store release needs its own registered publisher identity.
   "appx": {
-    "identityName": "EtienneLescot.OpenScreen",
-    "publisher": "CN=03B0FC8C-2067-45D9-BE82-9F15CE264B4A",
-    "publisherDisplayName": "Etienne Lescot",
-    "applicationId": "Openscreen",
-    "displayName": "OpenScreen",
+    "identityName": "DonquiStudio.App",
+    "publisher": "CN=DonquiStudio",
+    "publisherDisplayName": "Donqui Studio",
+    "applicationId": "DonquiStudio",
+    "displayName": "Donqui Studio",
     "backgroundColor": "transparent",
     "capabilities": ["runFullTrust", "microphone", "webcam"],
     // Mirrors SUPPORTED_LOCALES in src/i18n/config.ts. This list is what the Store

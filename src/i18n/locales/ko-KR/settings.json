@@ -134,7 +134,7 @@
 	"stylePresets": {
 		"button": "프리셋",
 		"menuLabel": "스타일 프리셋",
-		"factoryName": "OpenScreen",
+		"factoryName": "Donqui Studio",
 		"factoryBadge": "기본 제공",
 		"empty": "저장된 프리셋이 없습니다",
 		"create": "새 프리셋 만들기…",

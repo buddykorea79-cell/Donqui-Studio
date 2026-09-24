@@ -27,10 +27,17 @@
 // to chain off). The original promise returned to the caller is NOT
 // swallowed — the caller can await it and observe the rejection.
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import type { AxcutTimelineOperation } from "@/lib/ai-edition/document/operations";
 import type { AxcutDocument } from "@/lib/ai-edition/schema";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
 import { type DocumentWriteOptions, useProjectStore } from "./projectStore";
+import { currentWriteEpoch } from "./undoStack";
+
+function currentProjectId(): string | null {
+	const state = useProjectStore.getState();
+	return state.projectId ?? state.document?.project.id ?? null;
+}
 
 export interface SequentialTimelineOps {
 	/**
@@ -61,8 +68,10 @@ export interface SequentialTimelineOps {
 	 * document — and anything derived from it, an append index included —
 	 * inside `task` rather than closing over it: a value captured at call
 	 * time is the pre-mutation one, which is the whole race.
+	 * Resolves undefined without running the task if a project switch or undo
+	 * superseded it while it waited behind another document mutation.
 	 */
-	enqueue: <T>(task: () => Promise<T> | T) => Promise<T>;
+	enqueue: <T>(task: () => Promise<T> | T) => Promise<T | undefined>;
 }
 
 export function useSequentialTimelineOps(options: {
@@ -77,26 +86,22 @@ export function useSequentialTimelineOps(options: {
 	saveDocument: (doc: AxcutDocument, opts: DocumentWriteOptions) => Promise<boolean>;
 }): SequentialTimelineOps {
 	const { fallbackDocument, saveDocument } = options;
-	const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-
-	const enqueue = useCallback(<T>(task: () => Promise<T> | T): Promise<T> => {
-		const queued = saveQueueRef.current.then(() => task());
-		// Swallow rejection when advancing the queue so a failed save
-		// doesn't poison the queue — the next call still has a
-		// resolved promise to chain off. The original `queued` is
-		// returned to the caller, who can await it and observe the
-		// rejection.
-		saveQueueRef.current = queued.then(
-			() => undefined,
-			() => undefined,
-		);
-		return queued;
+	const enqueue = useCallback(<T>(task: () => Promise<T> | T): Promise<T | undefined> => {
+		const projectId = currentProjectId();
+		const epoch = currentWriteEpoch();
+		return enqueueDocumentWrite(() => {
+			if (currentProjectId() !== projectId || currentWriteEpoch() !== epoch) return undefined;
+			return task();
+		});
 	}, []);
 
 	const apply = useCallback(
 		(op: AxcutTimelineOperation, opts: DocumentWriteOptions): Promise<AxcutDocument | null> =>
 			enqueue(async () => {
+				const projectId = currentProjectId();
+				const epoch = currentWriteEpoch();
 				const { applyTimelineOperation } = await import("@/lib/ai-edition/document/operations");
+				if (currentProjectId() !== projectId || currentWriteEpoch() !== epoch) return null;
 				// Read the doc inside the chain. The store holds the
 				// latest committed state because the previous call's
 				// save has already resolved by the time this runs —
@@ -105,7 +110,7 @@ export function useSequentialTimelineOps(options: {
 				if (!doc) return null;
 				const applied = applyTimelineOperation(doc, op);
 				return (await saveDocument(applied.document, opts)) ? applied.document : null;
-			}),
+			}).then((document) => document ?? null),
 		[enqueue, fallbackDocument, saveDocument],
 	);
 

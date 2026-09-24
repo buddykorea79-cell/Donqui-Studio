@@ -12,6 +12,7 @@ interface TransportBarProps {
 	/** Live scrub position while a timeline drag is in flight; null = follow the store. */
 	overrideTimeSec: number | null;
 	clips: AxcutClip[];
+	durationSec?: number;
 	onTogglePlay: () => void;
 	onPrevClip: () => void;
 	onNextClip: () => void;
@@ -24,6 +25,7 @@ export const TransportBar = memo(function TransportBar({
 	playing,
 	overrideTimeSec,
 	clips,
+	durationSec,
 	onTogglePlay,
 	onPrevClip,
 	onNextClip,
@@ -36,10 +38,8 @@ export const TransportBar = memo(function TransportBar({
 	// to re-render once per frame to hand it down as a prop.
 	const storeTimeSec = useProjectStore((s) => s.currentTimeSec);
 	const currentTimeSec = overrideTimeSec ?? storeTimeSec;
-	const virtualDurationSec = clips.reduce(
-		(acc, c) => acc + (c.timelineEndSec - c.timelineStartSec),
-		0,
-	);
+	const virtualDurationSec =
+		durationSec ?? clips.reduce((acc, c) => acc + (c.timelineEndSec - c.timelineStartSec), 0);
 	// ponytail: mirrors Preview's old clamp so the CSS thumb and the native
 	// range thumb stay in sync when there's no clip yet.
 	const inputMax = virtualDurationSec || 1;

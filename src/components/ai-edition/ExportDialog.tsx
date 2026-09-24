@@ -185,8 +185,9 @@ export function ExportDialog({ open, onClose, document }: ExportDialogProps) {
 	const primaryAsset = useMemo(
 		() =>
 			document
-				? (document.assets.find((a) => a.id === document.project.primaryAssetId) ??
-					document.assets[0])
+				? (document.assets.find(
+						(a) => a.id === document.project.primaryAssetId && a.kind !== "audio",
+					) ?? document.assets.find((a) => a.kind !== "audio"))
 				: null,
 		[document],
 	);
@@ -313,7 +314,7 @@ export function ExportDialog({ open, onClose, document }: ExportDialogProps) {
 			return;
 		}
 
-		const safeName = (document.project.title || "OpenScreen")
+		const safeName = (document.project.title || "Donqui Studio")
 			.replace(/[^a-z0-9-_]+/gi, "_")
 			.replace(/^_+|_+$/g, "")
 			.slice(0, 60);

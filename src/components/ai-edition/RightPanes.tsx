@@ -969,8 +969,8 @@ export function TranscriptPane({
 	const removed = useMemo(() => removedRawSpans(clips, trimRanges), [clips, trimRanges]);
 	// The take's placements are fed the cuts AND its own insertions, so a word after a pause
 	const voiceover = useMemo(
-		() => voiceoverPlacements(audioTracks, removed),
-		[audioTracks, removed],
+		() => voiceoverPlacements(audioTracks, removed, document ?? undefined),
+		[audioTracks, removed, document],
 	);
 	const activeLane = resolveCaptionLane(document, captionSettings);
 	const setLane = useCallback(
@@ -1437,16 +1437,11 @@ const TranscriptClipBlock = memo(function TranscriptClipBlock({
 			if (!wordEl?.dataset.wordId) return;
 			const cw = words.find((w) => w.id === wordEl.dataset.wordId);
 			if (!cw) return;
-			// `onSeek` takes RAW TIMELINE seconds (its other callers pass `timelineStartSec`;
-			// `handleSeek` forwards `isSource: false`), but a word's times are the ASSET's
-			// source seconds. Shift by this clip's offset — a raw clip is identity between
-			// source and raw time apart from where it sits on the ruler. Passing the source
-			// value straight through sent every click in a clip that doesn't start at ruler 0
-			// backwards into whichever clip covers that raw moment; it only looked right on a
-			// single clip at the head of the timeline, where the two coordinates coincide.
-			onSeek(clip.timelineStartSec + (cw.word.startSec - clip.sourceStartSec));
+			// Seek on the raw ruler, including the picture's speed multiplier for locked
+			// narration. Clamp words that overlap the edge of a split placement.
+			onSeek(toRawSpan(cw.word.startSec, cw.word.endSec)[0]);
 		},
-		[onSeek, words, clip.timelineStartSec, clip.sourceStartSec],
+		[onSeek, words, toRawSpan],
 	);
 
 	return (

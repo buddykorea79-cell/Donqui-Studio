@@ -566,8 +566,12 @@ describe("V4Timeline audio lane drag", () => {
 	}
 
 	function renderAudio(
-		trackOverrides: Partial<ReturnType<typeof makeTrack>> = {},
-		props: { onAddVoiceover?: () => void } = {},
+		trackOverrides: Partial<ReturnType<typeof makeTrack>> & { timelineLocked?: boolean } = {},
+		props: {
+			onAddVoiceover?: () => void;
+			speedRegions?: ReturnType<typeof useTimeline>["speedRegions"];
+			clips?: ReturnType<typeof useTimeline>["clips"];
+		} = {},
 		tracks?: Array<ReturnType<typeof makeTrack>>,
 	) {
 		const placeAudioTrack = vi.fn(
@@ -577,10 +581,10 @@ describe("V4Timeline audio lane drag", () => {
 		);
 		const selectAudioTrack = vi.fn();
 		const tl = {
-			clips: [clip(0, TOTAL_SEC)],
+			clips: props.clips ?? [clip(0, TOTAL_SEC)],
 			assets: [AUDIO_ASSET],
 			annotationRegions: [],
-			speedRegions: [],
+			speedRegions: props.speedRegions ?? [],
 			cameraFullscreenRegions: [],
 			zoomRegions: [],
 			trimRanges: [],
@@ -628,6 +632,35 @@ describe("V4Timeline audio lane drag", () => {
 
 	// 900px / 1800s = 0.5 px per second, so +90px is +180s.
 	const secForPx = (px: number) => (px / VIEWPORT_PX) * TOTAL_SEC;
+
+	it("maps audio-first placement and drag deltas onto the raw ruler under 2x video", () => {
+		const { pill, placeAudioTrack } = renderAudio(
+			{ timelineLocked: true },
+			{
+				speedRegions: [{ id: "fast", startMs: 0, endMs: TOTAL_SEC * 1000, speed: 2 }],
+			},
+		);
+		expect(Number.parseFloat(pill.style.left)).toBeCloseTo((200 / TOTAL_SEC) * 100, 3);
+		expect(Number.parseFloat(pill.style.width)).toBeCloseTo((120 / TOTAL_SEC) * 100, 3);
+		fireEvent.pointerDown(pill, { clientX: 0 });
+		window.dispatchEvent(new MouseEvent("pointermove", { clientX: 90 }));
+		window.dispatchEvent(new MouseEvent("pointerup", { clientX: 90 }));
+		expect(placeAudioTrack).toHaveBeenCalledOnce();
+		expect(placeAudioTrack.mock.calls[0][1]).toMatchObject({
+			startMs: 190_000,
+			endMs: 250_000,
+			offsetMs: 0,
+		});
+	});
+
+	it("sizes an audio-only ruler to the audio end instead of one second", () => {
+		const { pill } = renderAudio(
+			{ startMs: 0, endMs: 60_000, timelineLocked: true },
+			{ clips: [] },
+		);
+		expect(pill.style.left).toBe("0%");
+		expect(pill.style.width).toBe("100%");
+	});
 
 	it("offers both audio paths behind one toolbar button", () => {
 		// A mic and a music note side by side both just said "audio"; one button

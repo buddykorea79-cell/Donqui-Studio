@@ -134,7 +134,7 @@
 	"stylePresets": {
 		"button": "Пресеты",
 		"menuLabel": "Пресеты стиля",
-		"factoryName": "OpenScreen",
+		"factoryName": "Donqui Studio",
 		"factoryBadge": "Встроенный",
 		"empty": "Сохранённых пресетов пока нет",
 		"create": "Создать пресет…",

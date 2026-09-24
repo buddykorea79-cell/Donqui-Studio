@@ -11,12 +11,18 @@ import {
 } from "@/lib/ai-edition/document/audioTracks";
 import { createId } from "@/lib/ai-edition/document/ids";
 import {
+	addManualSubtitle,
+	type ManualSubtitleInput,
+} from "@/lib/ai-edition/document/manualSubtitle";
+import {
 	migrateProjectDataToAxcutDocument,
 	migrateRawDocumentToCurrent,
 } from "@/lib/ai-edition/document/migrate";
 import {
 	documentAfterProbedDuration,
 	PLACEHOLDER_DURATION_SEC,
+	projectPlaybackSecToRawTimeline,
+	projectRawTimelineSecToPlayback,
 } from "@/lib/ai-edition/document/timeline";
 import {
 	type InsertSide,
@@ -68,6 +74,7 @@ import {
 import { Preview } from "./Preview";
 import { importPendingRecording, maybeSaveFreshRecordingAutoZooms } from "./recordingImport";
 import { AddAudioLayerDialog } from "./v4/AddAudioLayerDialog";
+import { AudioStage } from "./v4/AudioStage";
 import v4 from "./v4/EditorShellV4.module.css";
 import { type EditorMode, EditorTopBar } from "./v4/EditorTopBar";
 import { type Facet, FloatingInspector } from "./v4/FloatingInspector";
@@ -205,9 +212,17 @@ export function NewEditorShell() {
 
 	const [seekTarget, setSeekTarget] = useState<SeekTarget | null>(null);
 	const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
-	// v4 shell: three modes (Media / Edit / Rec), a collapsible agent (chat)
+	// Audio is optional; it precedes Media for soundtrack-led projects.
 	// column, and a floating facet inspector over the stage.
-	const [mode, setMode] = useState<EditorMode>("edit");
+	const [mode, setMode] = useState<EditorMode>(() =>
+		document?.timeline.clips.length ? "edit" : "audio",
+	);
+	const initialModeChosen = useRef(Boolean(document));
+	useEffect(() => {
+		if (!document || initialModeChosen.current) return;
+		initialModeChosen.current = true;
+		setMode(document.timeline.clips.length ? "edit" : "audio");
+	}, [document]);
 	const [chatOpen, setChatOpen] = useState(false);
 	const pendingChatPrompt = useChatPromptBus((s) => s.pending);
 	useEffect(() => {
@@ -546,6 +561,21 @@ export function NewEditorShell() {
 	// The append index is read INSIDE the chain for the same reason the doc is: off the
 	// closure, `clips.length` stays frozen at the last render, so the second add lands
 	// before the first instead of after it.
+	const handleAddSubtitle = useCallback(
+		(input: ManualSubtitleInput) => {
+			const projectId = useProjectStore.getState().projectId;
+			return enqueueTimelineWrite(async () => {
+				const state = useProjectStore.getState();
+				if (!state.document || state.projectId !== projectId)
+					throw new Error("프로젝트가 변경되었습니다.");
+				if (
+					!(await state.saveDocument(addManualSubtitle(state.document, input), { history: true }))
+				)
+					throw new Error("자막을 저장하지 못했습니다.");
+			});
+		},
+		[enqueueTimelineWrite],
+	);
 	const handleDropAsset = useCallback(
 		(assetId: string) =>
 			enqueueTimelineWrite(() => {
@@ -613,6 +643,17 @@ export function NewEditorShell() {
 	}, [videoElement, setPlaying]);
 
 	const togglePlay = useCallback(() => {
+		if (mode === "audio") {
+			const state = useProjectStore.getState();
+			const end = Math.max(
+				0,
+				...(state.document?.audioTracks.map((track) => track.endMs / 1000) ?? []),
+			);
+			if (end <= 0) return;
+			if (!state.playing && state.currentTimeSec >= end) state.setCurrentTime(0);
+			state.setPlaying(!state.playing);
+			return;
+		}
 		if (!videoElement) return;
 		if (videoElement.paused) {
 			// Same catch as VirtualPreview's: `play()` rejects on the autoplay policy
@@ -625,7 +666,7 @@ export function NewEditorShell() {
 		} else {
 			videoElement.pause();
 		}
-	}, [videoElement]);
+	}, [videoElement, mode]);
 
 	const handlePrevClip = useCallback(() => {
 		if (clips.length === 0) return;
@@ -844,6 +885,8 @@ export function NewEditorShell() {
 		async (id: string) => {
 			try {
 				await loadProject(id);
+				initialModeChosen.current = true;
+				setMode(useProjectStore.getState().document?.timeline.clips.length ? "edit" : "audio");
 			} catch (err) {
 				toast.error("Could not open project", {
 					description: err instanceof Error ? err.message : String(err),
@@ -854,12 +897,13 @@ export function NewEditorShell() {
 	);
 
 	// The dialog's starting point picks the tab the fresh project opens on:
-	// "import" → Media (browse/drop assets), "screen-recording" → Rec (capture).
+	// "import" → optional Audio, "screen-recording" → Rec (capture).
 	const handleCreateProject = useCallback(
 		async (title: string, startingPoint: StartingPoint) => {
 			try {
+				initialModeChosen.current = true;
 				await createProject(title);
-				setMode(startingPoint === "screen-recording" ? "rec" : "media");
+				setMode(startingPoint === "screen-recording" ? "rec" : "audio");
 			} catch (err) {
 				toast.error("Could not create project", {
 					description: err instanceof Error ? err.message : String(err),
@@ -1446,7 +1490,29 @@ export function NewEditorShell() {
 		handleSeek,
 	]);
 
-	const showTimeline = mode !== "rec";
+	const changeMode = (next: EditorMode) => {
+		setPlaying(false);
+		const state = useProjectStore.getState();
+		if (mode !== next && (mode === "audio" || next === "audio")) {
+			const time =
+				next === "audio"
+					? projectRawTimelineSecToPlayback(
+							tl.clips,
+							tl.trimRanges,
+							state.currentTimeSec,
+							tl.speedRegions,
+						)
+					: projectPlaybackSecToRawTimeline(
+							tl.clips,
+							tl.trimRanges,
+							state.currentTimeSec,
+							tl.speedRegions,
+						);
+			handleSeek(time);
+		}
+		setMode(next);
+	};
+	const showTimeline = mode !== "rec" && mode !== "audio";
 	const timelineRow = mode === "media" ? "188px" : `${timelineHeightPx}px`;
 	const bodyColumns = mode === "edit" && chatOpen ? `${chatWidthPx}px 1fr` : "1fr";
 
@@ -1533,10 +1599,10 @@ export function NewEditorShell() {
 			className={v4.app}
 			style={{ gridTemplateRows: `58px 1fr ${showTimeline ? timelineRow : "0px"}` }}
 		>
-			<NativePlaybackSync visibleClips={visibleClips} clips={clips} />
+			{mode === "edit" ? <NativePlaybackSync visibleClips={visibleClips} clips={clips} /> : null}
 			<EditorTopBar
 				mode={mode}
-				onModeChange={setMode}
+				onModeChange={changeMode}
 				projectTitle={project?.title ?? null}
 				dirty={dirty}
 				canExport={hasAsset}
@@ -1652,6 +1718,7 @@ export function NewEditorShell() {
 								/>
 							</div>
 							<FloatingInspector
+								onAddSubtitle={handleAddSubtitle}
 								facet={facet}
 								open={inspectorOpen}
 								tl={tl}
@@ -1665,6 +1732,13 @@ export function NewEditorShell() {
 								transcriptProps={transcriptProps}
 							/>
 						</>
+					) : mode === "audio" ? (
+						<AudioStage
+							onContinue={() => {
+								changeMode("media");
+							}}
+							onNewProject={() => setNewProjectOpen(true)}
+						/>
 					) : mode === "media" ? (
 						<MediaStage onAddToTimeline={handleDropAsset} />
 					) : (

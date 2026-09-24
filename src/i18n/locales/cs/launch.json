@@ -61,8 +61,8 @@
 		"screens": "Obrazovky ({{count}})",
 		"windows": "Okna ({{count}})",
 		"emptyTitle": "Žádné obrazovky ani okna nenalezena",
-		"emptyDescription": "Pokud jste právě udělili oprávnění pro záznam obrazovky, znovu načtěte tento výběr. Na macOS může být nutné znovu otevřít OpenScreen.",
-		"loadFailedDescription": "OpenScreen nemohl načíst zdroje záznamu. Znovu načtěte tento výběr a zkuste to znovu.",
+		"emptyDescription": "Pokud jste právě udělili oprávnění pro záznam obrazovky, znovu načtěte tento výběr. Na macOS může být nutné znovu otevřít Donqui Studio.",
+		"loadFailedDescription": "Donqui Studio nemohl načíst zdroje záznamu. Znovu načtěte tento výběr a zkuste to znovu.",
 		"defaultSourceName": "Obrazovka"
 	},
 	"recording": {
@@ -74,13 +74,13 @@
 	"language": "Jazyk",
 	"systemLanguagePrompt": {
 		"title": "Použít jazyk systému?",
-		"description": "Detekovali jsme {{language}} jako jazyk vašeho systému. Chcete přepnout OpenScreen na {{language}}?",
+		"description": "Detekovali jsme {{language}} jako jazyk vašeho systému. Chcete přepnout Donqui Studio na {{language}}?",
 		"switch": "Přepnout na {{language}}",
 		"keepDefault": "Ponechat aktuální jazyk"
 	},
 	"softwareEncoderFallback": {
 		"title": "Přepnuto na softwarové kódování",
-		"description": "Výchozí GPU enkodér se nepodařilo spustit, takže OpenScreen přepnul na softwarové kódování H.264. Nahrávání by mělo pokračovat normálně, ale využití CPU může být vyšší.",
+		"description": "Výchozí GPU enkodér se nepodařilo spustit, takže Donqui Studio přepnul na softwarové kódování H.264. Nahrávání by mělo pokračovat normálně, ale využití CPU může být vyšší.",
 		"dismiss": "Rozumím",
 		"dontShowAgain": "Již nezobrazovat"
 	},

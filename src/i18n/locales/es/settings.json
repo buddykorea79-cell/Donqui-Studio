@@ -134,7 +134,7 @@
 	"stylePresets": {
 		"button": "Preajustes",
 		"menuLabel": "Preajustes de estilo",
-		"factoryName": "OpenScreen",
+		"factoryName": "Donqui Studio",
 		"factoryBadge": "Integrado",
 		"empty": "Aún no hay preajustes guardados",
 		"create": "Crear preajuste…",

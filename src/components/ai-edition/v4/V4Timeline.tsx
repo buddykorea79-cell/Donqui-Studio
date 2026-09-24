@@ -44,6 +44,10 @@ import {
 } from "@/lib/ai-edition/document/audioTracks";
 import { createId } from "@/lib/ai-edition/document/ids";
 import { isGeneratedAssetId } from "@/lib/ai-edition/document/insertion";
+import {
+	projectPlaybackSecToRawTimeline,
+	projectRawTimelineSecToPlayback,
+} from "@/lib/ai-edition/document/timeline";
 import { setUiProbeScrubbing } from "@/lib/ai-edition/perf/uiFrameProbe";
 import type { AxcutAudioTrack, AxcutClip } from "@/lib/ai-edition/schema";
 import { audioGainScalar } from "@/lib/ai-edition/store/editorSettings";
@@ -656,6 +660,18 @@ export function V4Timeline({
 							: t("toolbar.smartCutsNeedsTranscript");
 
 	const clips = tl.clips;
+	const programmeToRaw = useCallback(
+		(sec: number) => projectPlaybackSecToRawTimeline(clips, tl.trimRanges, sec, tl.speedRegions),
+		[clips, tl.trimRanges, tl.speedRegions],
+	);
+	const rawToProgramme = useCallback(
+		(sec: number) => projectRawTimelineSecToPlayback(clips, tl.trimRanges, sec, tl.speedRegions),
+		[clips, tl.trimRanges, tl.speedRegions],
+	);
+	const audioToRaw = useCallback(
+		(track: AxcutAudioTrack, sec: number) => (track.timelineLocked ? programmeToRaw(sec) : sec),
+		[programmeToRaw],
+	);
 	// A camera-fullscreen region grows the webcam overlay, so on a project with no webcam
 	// it renders nothing in the preview and nothing in the export. `addCameraFullscreen`
 	// refuses to write one (see useTimeline) — this makes the control say so before it is
@@ -670,8 +686,9 @@ export function V4Timeline({
 			Math.max(
 				1,
 				clips.reduce((m, c) => Math.max(m, c.timelineEndSec), 0),
+				tl.audioTracks.reduce((m, track) => Math.max(m, audioToRaw(track, track.endMs / 1000)), 0),
 			),
-		[clips],
+		[clips, tl.audioTracks, audioToRaw],
 	);
 	const pctOf = useCallback((sec: number) => (sec / total) * 100, [total]);
 	/** Stored raw seconds → a percentage of the expanded ruler. */
@@ -1105,6 +1122,9 @@ export function V4Timeline({
 			const origStart = track.startMs / 1000;
 			const origTrimStart = track.offsetMs / 1000;
 			const origTrimEnd = origTrimStart + spanSec;
+			const toTrackTime = (sec: number) => (track.timelineLocked ? rawToProgramme(sec) : sec);
+			const toRawTime = (sec: number) => audioToRaw(track, sec);
+			const editableEnd = toTrackTime(total);
 			// Alt inside the pill slips it: the span stays put and the media slides under
 			// it. On the BODY only — the edges keep their crop semantics.
 			//
@@ -1133,7 +1153,7 @@ export function V4Timeline({
 				total,
 				...clips.map((c) => c.timelineStartSec),
 				...clips.map((c) => c.timelineEndSec),
-			];
+			].map(toTrackTime);
 			const snapThresh = pxPerSec > 0 ? PILL_SNAP_PX / pxPerSec : 0;
 			const snap = (v: number): number => {
 				let best = v;
@@ -1145,7 +1165,7 @@ export function V4Timeline({
 						best = target;
 					}
 				}
-				setSnapPct(best === v ? null : (best / total) * 100);
+				setSnapPct(best === v ? null : (toRawTime(best) / total) * 100);
 				return best;
 			};
 			const move = (ev: PointerEvent) => {
@@ -1176,14 +1196,16 @@ export function V4Timeline({
 					setAudioDrag(slipState);
 					return;
 				}
-				const dxSec = ((ev.clientX - startX) / r.width) * total;
+				const rawOrigin = toRawTime(mode === "r" ? origStart + spanSec : origStart);
+				const rawDelta = ((ev.clientX - startX) / r.width) * total;
+				const dxSec = toTrackTime(Math.max(0, rawOrigin + rawDelta)) - toTrackTime(rawOrigin);
 				let ns = origStart;
 				let nts = origTrimStart;
 				let nte = origTrimEnd;
 				if (mode === "move") {
 					// Cap so the whole track lands by `total`: no pill past 100%, and the
 					// export (which truncates at the programme end) matches what's shown.
-					const upper = Math.max(0, total - (origTrimEnd - origTrimStart));
+					const upper = Math.max(0, editableEnd - (origTrimEnd - origTrimStart));
 					ns = Math.min(Math.max(0, snap(origStart + dxSec)), upper);
 				} else if (mode === "l") {
 					// The left edge can't cross the right one, and can't reveal more head
@@ -1205,7 +1227,7 @@ export function V4Timeline({
 					nte = Math.min(
 						Math.max(newTrimEnd, origTrimStart + MIN_REGION_SEC),
 						maxEnd,
-						origTrimStart + Math.max(0, total - origStart),
+						origTrimStart + Math.max(0, editableEnd - origStart),
 					);
 				}
 				// The readout answers "where am I in the file", which is the one thing the
@@ -1257,7 +1279,7 @@ export function V4Timeline({
 		// navSpan: the slip rate is derived from the VISIBLE width, so a zoom that
 		// leaves `total` alone still changes it. Left out, the rate froze at whatever
 		// the zoom was when the callback was last built.
-		[tl, total, clips, pxPerSec, navSpan],
+		[tl, total, clips, pxPerSec, navSpan, audioToRaw, rawToProgramme],
 	);
 
 	const startNavDrag = useCallback(
@@ -1994,6 +2016,7 @@ export function V4Timeline({
 							playing={playing}
 							overrideTimeSec={scrubbingTimeSec}
 							clips={clips}
+							durationSec={total}
 							onTogglePlay={onTogglePlay}
 							onPrevClip={onPrevClip}
 							onNextClip={onNextClip}
@@ -2112,8 +2135,10 @@ export function V4Timeline({
 													track={track}
 													url={asset ? toFileUrl(asset.originalPath) : undefined}
 													assetDurationSec={duration}
-													leftPct={pctOf(start)}
-													widthPct={pctOf(widthSec)}
+													leftPct={pctOf(audioToRaw(track, start))}
+													widthPct={pctOf(
+														audioToRaw(track, start + widthSec) - audioToRaw(track, start),
+													)}
 													row={audioRows.rowOf.get(track.id) ?? 0}
 													rowHeight={AUDIO_ROW_HEIGHT_PX + AUDIO_ROW_GAP_PX}
 													spanSec={widthSec}
@@ -2132,8 +2157,10 @@ export function V4Timeline({
 													ghost={((g) =>
 														g
 															? {
-																	leftPct: pctOf(g.startT),
-																	widthPct: pctOf(g.endT - g.startT),
+																	leftPct: pctOf(audioToRaw(track, g.startT)),
+																	widthPct: pctOf(
+																		audioToRaw(track, g.endT) - audioToRaw(track, g.startT),
+																	),
 																	sourceStartSec: g.sourceStartSec,
 																	sourceEndSec: g.sourceEndSec,
 																}
@@ -2144,7 +2171,7 @@ export function V4Timeline({
 															duration,
 															start,
 															start + widthSec,
-															total,
+															track.timelineLocked ? rawToProgramme(total) : total,
 														),
 													)}
 												/>

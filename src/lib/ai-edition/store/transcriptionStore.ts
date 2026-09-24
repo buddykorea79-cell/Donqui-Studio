@@ -44,7 +44,8 @@ import {
 	type TranscriptionProgress,
 	transcriptRelevantAssetIds,
 } from "../transcription/status";
-import { useProjectStore } from "./projectStore";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
+import { useProjectStore, waitForDocumentSaves } from "./projectStore";
 
 export interface TranscriptionJob {
 	status: "queued" | "running" | "failed";
@@ -319,35 +320,38 @@ async function persistPermanentFailure(
 ): Promise<void> {
 	const kind = failure.kind;
 	if (!isPermanentFailure(kind)) return;
-	const project = useProjectStore.getState();
-	const doc = project.document;
-	if (!doc || doc.project.id !== projectId) return;
-	if (!doc.assets.some((a) => a.id === assetId)) return;
-	// Best-effort bookkeeping: `saveDocument` reports its own failures and resolves
-	// false rather than throwing, and a note on the asset is not worth a second
-	// message on top of the one the user already got.
-	const persisted = await project.saveDocument(
-		{
-			...doc,
-			assets: doc.assets.map((a) =>
-				a.id === assetId
-					? {
-							...a,
-							transcriptionFailure: {
-								kind,
-								message: failure.message,
-								at: new Date().toISOString(),
-							},
-						}
-					: a,
-			),
-		},
-		// Bookkeeping, not an edit — it must not become an undo step.
-		{ history: false },
-	);
-	if (!persisted) {
-		console.warn("[transcription] could not persist the failure on the asset");
-	}
+	await enqueueDocumentWrite(async () => {
+		if ((await waitForDocumentSaves()) !== "idle") return;
+		const project = useProjectStore.getState();
+		const doc = project.document;
+		if (!doc || doc.project.id !== projectId) return;
+		if (!doc.assets.some((a) => a.id === assetId)) return;
+		// Best-effort bookkeeping: `saveDocument` reports its own failures and resolves
+		// false rather than throwing, and a note on the asset is not worth a second
+		// message on top of the one the user already got.
+		const persisted = await project.saveDocument(
+			{
+				...doc,
+				assets: doc.assets.map((a) =>
+					a.id === assetId
+						? {
+								...a,
+								transcriptionFailure: {
+									kind,
+									message: failure.message,
+									at: new Date().toISOString(),
+								},
+							}
+						: a,
+				),
+			},
+			// Bookkeeping, not an edit — it must not become an undo step.
+			{ history: false },
+		);
+		if (!persisted) {
+			console.warn("[transcription] could not persist the failure on the asset");
+		}
+	});
 }
 
 let runSeq = 0;
@@ -404,44 +408,53 @@ async function runJob(assetId: string, job: TranscriptionJob): Promise<void> {
 			dropJob(assetId, runId);
 			return;
 		}
-		// The user may have switched projects while whisper was working — writing
-		// the transcript now would attach it to the document that is loaded today.
-		const current = useProjectStore.getState().document;
-		if (!current || current.project.id !== projectId) {
-			dropJob(assetId, runId);
-			return;
-		}
-		// A run REPLACES the asset's transcript, so any word the user had corrected by
-		// hand would go with it. Carry those corrections onto the new words first —
-		// strictly, so nothing is invented (see `carryOverWordEdits`). What could not be
-		// carried is lost; telling the user so is the UI's job, and there is no surface
-		// for it yet.
-		const merged = carryOverWordEdits(
-			current.transcripts.find((t) => t.assetId === assetId),
-			transcript,
-		);
-		if (merged.dropped > 0) {
-			console.warn(
-				`[transcription] ${merged.dropped} word correction(s) on asset ${assetId} could not be carried over to the new transcript.`,
+		// Only the small commit belongs in the shared document queue, never the
+		// transcription itself. Read after earlier imports and clip edits settle.
+		await enqueueDocumentWrite(async () => {
+			if ((await waitForDocumentSaves()) !== "idle" || controller.signal.aborted) return;
+			// The user may have switched projects while whisper was working — writing
+			// the transcript now would attach it to the document that is loaded today.
+			const current = useProjectStore.getState().document;
+			if (
+				!current ||
+				current.project.id !== projectId ||
+				!current.assets.some((a) => a.id === assetId)
+			) {
+				dropJob(assetId, runId);
+				return;
+			}
+			// A run REPLACES the asset's transcript, so any word the user had corrected by
+			// hand would go with it. Carry those corrections onto the new words first —
+			// strictly, so nothing is invented (see `carryOverWordEdits`). What could not be
+			// carried is lost; telling the user so is the UI's job, and there is no surface
+			// for it yet.
+			const merged = carryOverWordEdits(
+				current.transcripts.find((t) => t.assetId === assetId),
+				transcript,
 			);
-		}
-		// One save: the transcript, and (on a successful retry) the removal of
-		// the verdict remembered on the asset.
-		// `history: false`: a transcript landing from a background job is not an edit
-		// the user made, and making it the target of the next Ctrl+Z would both surprise
-		// them and throw the transcript away.
-		await useProjectStore.getState().saveDocument(
-			withTranscript(
-				{
-					...current,
-					assets: current.assets.map((a) =>
-						a.id === assetId && a.transcriptionFailure ? { ...a, transcriptionFailure: null } : a,
-					),
-				},
-				merged.transcript,
-			),
-			{ history: false },
-		);
+			if (merged.dropped > 0) {
+				console.warn(
+					`[transcription] ${merged.dropped} word correction(s) on asset ${assetId} could not be carried over to the new transcript.`,
+				);
+			}
+			// One save: the transcript, and (on a successful retry) the removal of
+			// the verdict remembered on the asset.
+			// `history: false`: a transcript landing from a background job is not an edit
+			// the user made, and making it the target of the next Ctrl+Z would both surprise
+			// them and throw the transcript away.
+			await useProjectStore.getState().saveDocument(
+				withTranscript(
+					{
+						...current,
+						assets: current.assets.map((a) =>
+							a.id === assetId && a.transcriptionFailure ? { ...a, transcriptionFailure: null } : a,
+						),
+					},
+					merged.transcript,
+				),
+				{ history: false },
+			);
+		});
 		dropJob(assetId, runId);
 		if (job.manual) toast.success(toastText("mediaStage.transcriptReady"));
 	} catch (error) {

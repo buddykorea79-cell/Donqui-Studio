@@ -133,3 +133,9 @@ workbench/fixtures/
 /aur_ci.pub
 /aur_known_hosts
 tmp_handoff.md
+
+# Local Donqui Studio verification and downloaded runtime
+.local/
+
+# Generated Remotion composition and standalone rendering runtime
+dist-remotion/

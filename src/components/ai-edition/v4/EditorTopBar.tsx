@@ -14,14 +14,14 @@ import {
 	Sun,
 } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
-import logoMark from "@/assets/openscreen-mark.png";
+import logoMark from "@/assets/donqui-mark.svg";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/hooks/useTheme";
 import { getAvailableLocales, getLocaleName, getLocaleShort } from "@/i18n/loader";
 import { StylePresetsMenu } from "../StylePresetsMenu";
 import styles from "./EditorShellV4.module.css";
 
-export type EditorMode = "media" | "edit" | "rec";
+export type EditorMode = "audio" | "media" | "edit" | "rec";
 
 export interface TopBarActions {
 	openProject: () => void;
@@ -47,6 +47,7 @@ interface EditorTopBarProps {
 }
 
 const MODES: Array<{ id: EditorMode; labelKey: string }> = [
+	{ id: "audio", labelKey: "Audio" },
 	{ id: "media", labelKey: "topbar.modes.media" },
 	{ id: "edit", labelKey: "topbar.modes.edit" },
 	{ id: "rec", labelKey: "topbar.modes.rec" },
@@ -166,10 +167,10 @@ export function EditorTopBar({
 						title={t(m.labelKey)}
 						// Feeds the hidden bold copy that reserves the selected width — see
 						// .modeSwitch button::before.
-						data-label={t(m.labelKey)}
+						data-label={m.id === "audio" ? "Audio" : t(m.labelKey)}
 						onClick={() => onModeChange(m.id)}
 					>
-						<span className={styles.modeLabel}>{t(m.labelKey)}</span>
+						<span className={styles.modeLabel}>{m.id === "audio" ? "Audio" : t(m.labelKey)}</span>
 					</button>
 				))}
 			</div>
@@ -390,14 +391,14 @@ function AppMenu({ actions }: { actions: TopBarActions }) {
 				className={`${styles.brand} ${styles.brandBtn}`}
 				aria-haspopup="menu"
 				aria-expanded={open}
-				aria-label="OpenScreen"
-				title="OpenScreen"
+				aria-label="Donqui Studio"
+				title="Donqui Studio"
 				onClick={() => setOpen((v) => !v)}
 			>
 				{/* Decorative: the wordmark beside it already names the app — and, being the
 				    button's only text, is also its accessible name. */}
 				<img src={logoMark} alt="" draggable={false} />
-				<span className={styles.name}>OpenScreen</span>
+				<span className={styles.name}>Donqui Studio</span>
 				<ChevronDown size={13} className={styles.brandChevron} aria-hidden />
 			</button>
 			{open ? (

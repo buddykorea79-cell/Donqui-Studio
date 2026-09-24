@@ -18,7 +18,9 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AxcutDocument, createEmptyDocument } from "@/lib/ai-edition/schema";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
 import { useProjectStore } from "./projectStore";
+import { supersedeInFlightWrites } from "./undoStack";
 import { useSequentialTimelineOps } from "./useSequentialTimelineOps";
 
 function makeDocWithAsset(): AxcutDocument {
@@ -65,6 +67,45 @@ afterEach(() => {
 });
 
 describe("useSequentialTimelineOps", () => {
+	it.each([
+		"project switch",
+		"undo",
+	] as const)("drops a queued edit after a %s instead of applying it to the replacement document", async (supersedingAction) => {
+		const seed = makeDocWithAsset();
+		useProjectStore.setState({ projectId: seed.project.id, document: seed });
+		const saveDocument = vi.fn(async () => true);
+		const { result } = renderHook(() =>
+			useSequentialTimelineOps({ fallbackDocument: seed, saveDocument }),
+		);
+		let release!: () => void;
+		const importing = enqueueDocumentWrite(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+		const callback = vi.fn(() => "should not run");
+		const queuedCallback = result.current.enqueue(callback);
+		const queuedTrim = result.current.apply(
+			{ type: "add_trim_range", assetId: "asset_1", startSec: 1, endSec: 2, reason: "Old edit" },
+			{ history: true },
+		);
+		if (supersedingAction === "project switch") {
+			const other = { ...seed, project: { ...seed.project, id: "other" } };
+			useProjectStore.setState({ projectId: "other", document: other });
+		} else {
+			supersedeInFlightWrites();
+		}
+		release();
+		await importing;
+		await expect(queuedCallback).resolves.toBeUndefined();
+		await expect(queuedTrim).resolves.toBeNull();
+		expect(callback).not.toHaveBeenCalled();
+		expect(saveDocument).not.toHaveBeenCalled();
+		expect(useProjectStore.getState().document?.timeline.trimRanges).toEqual([]);
+	});
+
 	it("serialises calls: op N+1 reads the doc op N committed", async () => {
 		const seed = makeDocWithAsset();
 		useProjectStore.setState({ document: seed });

@@ -49,7 +49,7 @@
 		"cameraCaptureUnavailable": "Kameru se nepodařilo otevřít. Nahrávání probíhá bez ní.",
 		"microphoneDefaulted": "Vybraný mikrofon se nepodařilo identifikovat. Nahrávání bude pokračovat s výchozím vstupem.",
 		"permissionDenied": "Oprávnění k nahrávání odepřeno. Povolte prosím záznam obrazovky.",
-		"accessibilityAllowAndRetry": "Povolte přístup k usnadnění pro OpenScreen a poté znovu stiskněte tlačítko nahrávání pro zahájení odpočítávání.",
+		"accessibilityAllowAndRetry": "Povolte přístup k usnadnění pro Donqui Studio a poté znovu stiskněte tlačítko nahrávání pro zahájení odpočítávání.",
 		"selectSource": "Vyberte prosím zdroj pro nahrávání"
 	},
 	"emptyState": {
@@ -260,7 +260,7 @@
 			"disclaimer": "Přepis vašeho videa bude odeslán vámi zvolenému poskytovateli. Nic není sdíleno, dokud ho nepřipojíte."
 		},
 		"authorUser": "Vy",
-		"authorAssistant": "OpenScreen",
+		"authorAssistant": "Donqui Studio",
 		"rewindToMessage": "Přetočit na tuto zprávu",
 		"copyMessage": "Kopírovat zprávu",
 		"copiedToClipboard": "Zkopírováno do schránky",

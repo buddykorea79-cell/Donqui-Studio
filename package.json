@@ -1,5 +1,5 @@
 {
-	"name": "openscreen",
+	"name": "donqui-studio",
 	"private": true,
 	"version": "1.12.2",
 	"description": "Record your screen and polish the demo",
@@ -93,7 +93,15 @@
 		"fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
 		"fetch:ffmpeg:mac": "node scripts/fetch-ffmpeg-macos.mjs",
 		"fetch:ffmpeg:sdk": "node scripts/fetch-ffmpeg.mjs --sdk-only",
-		"fetch:onnxruntime": "node scripts/fetch-onnxruntime.mjs"
+		"fetch:onnxruntime": "node scripts/fetch-onnxruntime.mjs",
+		"build:clip-effects": "node scripts/build-clip-effects.mjs",
+		"predev": "npm run build:clip-effects",
+		"prebuild": "npm run build:clip-effects",
+		"prebuild-vite": "npm run build:clip-effects",
+		"prebuild:win": "npm run build:clip-effects",
+		"prebuild:win:store": "npm run build:clip-effects",
+		"prebuild:mac": "npm run build:clip-effects",
+		"prebuild:linux": "npm run build:clip-effects"
 	},
 	"dependencies": {
 		"@fix-webm-duration/fix": "^1.0.1",
@@ -113,6 +121,10 @@
 		"@radix-ui/react-toggle": "^1.1.10",
 		"@radix-ui/react-toggle-group": "^1.1.11",
 		"@radix-ui/react-tooltip": "^1.2.8",
+		"@remotion/bundler": "4.0.513",
+		"@remotion/media": "4.0.513",
+		"@remotion/player": "4.0.513",
+		"@remotion/renderer": "4.0.513",
 		"@tiptap/extension-text-style": "^3.27.1",
 		"@tiptap/react": "^3.27.1",
 		"@tiptap/starter-kit": "^3.27.1",
@@ -133,6 +145,7 @@
 		"react-icons": "^5.6.0",
 		"react-resizable-panels": "^3.0.6",
 		"react-rnd": "^10.5.3",
+		"remotion": "4.0.513",
 		"sonner": "^2.0.7",
 		"tailwind-merge": "^3.5.0",
 		"tailwindcss-animate": "^1.0.7",

@@ -1,3 +1,4 @@
+import { resolveExportProject } from "./resolveExportProject";
 // Hidden-window runner for `openscreen export`. Loads an .openscreen project,
 // migrates it to the AxcutDocument the native Rust compositor consumes, and
 // drives exportMultiNative/exportGifNative — mirroring the v4 ExportDialog so
@@ -10,7 +11,6 @@ import {
 	normalizeProjectEditor,
 	resolveProjectMedia,
 	toFileUrl,
-	validateProjectData,
 } from "@/components/video-editor/projectPersistence";
 import type { CursorTelemetryPoint } from "@/components/video-editor/types";
 import { migrateProjectDataToAxcutDocument } from "@/lib/ai-edition/document/migrate";
@@ -147,10 +147,8 @@ async function runExport(request: CliExportRequest): Promise<CliDoneResult> {
 	if (!loaded.success || loaded.project === undefined) {
 		throw new Error(loaded.error ?? loaded.message ?? "Failed to load project file");
 	}
-	if (!validateProjectData(loaded.project)) {
-		throw new Error("Project file is not a valid .openscreen project");
-	}
-	const project = loaded.project;
+	const resolved = resolveExportProject(loaded.project);
+	const project = resolved.project;
 	const media = resolveProjectMedia(project);
 	if (!media) {
 		throw new Error("Project file does not reference any recorded media");
@@ -199,16 +197,18 @@ async function runExport(request: CliExportRequest): Promise<CliDoneResult> {
 	// compositor consumes. The migration is pure and carries zooms, annotations,
 	// trims and the legacy editor settings; the clip's duration is unknown until
 	// probed, so applyProbedDuration must run or the export is a single frame.
-	let axcutDocument = migrateProjectDataToAxcutDocument({
-		...project,
-		media,
-		editor,
-	});
+	let axcutDocument =
+		resolved.document ??
+		migrateProjectDataToAxcutDocument({
+			...project,
+			media,
+			editor,
+		});
 	const primaryAssetId = axcutDocument.project.primaryAssetId ?? axcutDocument.assets[0]?.id;
 	if (!primaryAssetId) {
 		throw new Error("Project migration produced no media asset");
 	}
-	if (probed.durationMs > 0) {
+	if (probed.durationMs > 0 && !resolved.document) {
 		axcutDocument = applyProbedDuration(axcutDocument, primaryAssetId, probed.durationMs / 1000);
 	}
 

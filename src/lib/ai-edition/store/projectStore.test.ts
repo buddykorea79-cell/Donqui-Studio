@@ -251,6 +251,41 @@ describe("useProjectStore", () => {
 		expect(camera?.offsetMs).toBe(-193);
 	});
 
+	it("does not restore the old project when switching during camera lookup", async () => {
+		useProjectStore.setState({ projectId: sampleDoc.project.id, document: sampleDoc });
+		bridgeMocks.addAsset.mockResolvedValue({
+			document: {
+				...sampleDoc,
+				assets: [
+					{
+						id: "asset_camera",
+						kind: "video",
+						label: "screen.mp4",
+						originalPath: "/tmp/screen.mp4",
+					},
+				],
+			},
+		});
+		let finishCamera!: (value: { success: boolean; webcamVideoPath: string }) => void;
+		const cameraLookup = vi.mocked(window.electronAPI.findRecordingCamera);
+		cameraLookup.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finishCamera = resolve;
+				}),
+		);
+		const pending = useProjectStore.getState().addAsset("/tmp/screen.mp4");
+		await vi.waitFor(() => expect(cameraLookup).toHaveBeenCalled());
+		const next = { ...sampleDoc, project: { ...sampleDoc.project, id: "proj_next" } };
+		bridgeMocks.get.mockResolvedValue({ success: true, document: next });
+		await useProjectStore.getState().loadProject("proj_next");
+		finishCamera({ success: true, webcamVideoPath: "/tmp/camera.mp4" });
+		expect(await pending).toBeNull();
+		expect(bridgeMocks.save).not.toHaveBeenCalled();
+		expect(useProjectStore.getState().projectId).toBe("proj_next");
+		expect(useProjectStore.getState().document?.project.id).toBe("proj_next");
+	});
+
 	it("addAsset stays silent (no toast) when a plain imported video has no camera", async () => {
 		useProjectStore.setState({
 			projectId: "proj_test",

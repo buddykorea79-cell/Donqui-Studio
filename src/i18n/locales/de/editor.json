@@ -49,7 +49,7 @@
 		"cameraCaptureUnavailable": "Die Kamera konnte nicht geöffnet werden. Die Aufnahme läuft ohne sie.",
 		"microphoneDefaulted": "Das gewählte Mikrofon konnte nicht identifiziert werden. Es wird der Standardeingang aufgenommen.",
 		"permissionDenied": "Aufnahmeberechtigung verweigert. Bitte erlaube die Bildschirmaufnahme.",
-		"accessibilityAllowAndRetry": "Erlaube OpenScreen den Zugriff auf die Bedienungshilfen und drücke dann erneut auf Aufnehmen, um den Countdown zu starten.",
+		"accessibilityAllowAndRetry": "Erlaube Donqui Studio den Zugriff auf die Bedienungshilfen und drücke dann erneut auf Aufnehmen, um den Countdown zu starten.",
 		"selectSource": "Bitte wähle eine Quelle für die Aufnahme"
 	},
 	"emptyState": {
@@ -260,7 +260,7 @@
 			"disclaimer": "Das Transkript deines Videos wird an den Anbieter gesendet, den du wählst. Es wird nichts geteilt, bevor du einen verbindest."
 		},
 		"authorUser": "Du",
-		"authorAssistant": "OpenScreen",
+		"authorAssistant": "Donqui Studio",
 		"rewindToMessage": "Zu dieser Nachricht zurückspulen",
 		"copyMessage": "Nachricht kopieren",
 		"copiedToClipboard": "In die Zwischenablage kopiert",

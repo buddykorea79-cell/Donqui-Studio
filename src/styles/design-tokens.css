@@ -1,6 +1,6 @@
 /* OpenScreen design system — light + dark.
  * Single source of truth for tokens used by the new editor shell.
- * Mint #10b981 is the sole chromatic accent. Red is reserved for
+ * Mint #0d9488 is the sole chromatic accent. Red is reserved for
  * REC / cut / skip / trim / transcript-highlight only. */
 
 /* :root:root (doubled pseudo-class) deliberately outranks a plain `:root` —
@@ -37,17 +37,17 @@
 	--dim: #b6c2d1;
 
 	/* mint brand */
-	--brand: #10b981;
+	--brand: #2dd4bf;
 	--brand-lo: #059669;
-	--brand-glow: rgba(16, 185, 129, 0.35);
-	--brand-soft: rgba(16, 185, 129, 0.10);
-	--accent: #10b981;
+	--brand-glow: rgba(45, 212, 191, 0.35);
+	--brand-soft: rgba(45, 212, 191, 0.10);
+	--accent: #0d9488;
 	--accent-on: #04221a;
-	--accent-soft: rgba(16, 185, 129, 0.10);
-	--accent-wash: rgba(16, 185, 129, 0.06);
-	--accent-border: rgba(16, 185, 129, 0.26);
-	--accent-ring: rgba(16, 185, 129, 0.28);
-	--accent-stripe: rgba(16, 185, 129, 0.30);
+	--accent-soft: rgba(45, 212, 191, 0.10);
+	--accent-wash: rgba(45, 212, 191, 0.06);
+	--accent-border: rgba(45, 212, 191, 0.26);
+	--accent-ring: rgba(45, 212, 191, 0.28);
+	--accent-stripe: rgba(45, 212, 191, 0.30);
 
 	/* timeline playhead — deliberately NOT the mint accent. The scrub cursor
 	   crosses every lane, including the accent-coloured zoom pills, so it needs
@@ -86,8 +86,8 @@
 	--speed-soft: rgba(249, 115, 22, 0.14);
 	--speed-wash: rgba(249, 115, 22, 0.14);
 
-	--success: #10b981;
-	--success-soft: rgba(16, 185, 129, 0.10);
+	--success: #0d9488;
+	--success-soft: rgba(45, 212, 191, 0.10);
 
 	/* macOS traffic lights */
 	--light-red: #ff5f57;
@@ -159,7 +159,7 @@
 	--elev-card-soft: 0 1px 2px rgba(15, 23, 42, 0.03);
 	--elev-pop: 0 8px 24px -8px rgba(15, 23, 42, 0.10), 0 2px 4px rgba(15, 23, 42, 0.04);
 
-	--focus-ring: 0 0 0 3px rgba(16, 185, 129, 0.18);
+	--focus-ring: 0 0 0 3px rgba(45, 212, 191, 0.18);
 
 	--motion-fast: 120ms;
 	--motion-base: 180ms;
@@ -167,10 +167,10 @@
 }
 
 :root[data-theme="dark"] {
-	--bg: #0a0d12;
-	--bg-grad: radial-gradient(ellipse at 50% 0%, #13171f 0%, #0a0d12 60%);
-	--surface: #14181f;
-	--surface-1: #14181f;
+	--bg: #181b20;
+	--bg-grad: radial-gradient(ellipse at 50% 0%, #242a30 0%, #181b20 60%);
+	--surface: #20252c;
+	--surface-1: #20252c;
 	--surface-2: #1c2029;
 	--surface-3: #252a35;
 	--surface-hi: #2b313b;
@@ -180,7 +180,7 @@
 	--border: #252a35;
 	--border-soft: #1c2029;
 	--border-hi: #3a4150;
-	--border-dark: #0a0d12;
+	--border-dark: #181b20;
 
 	--fg: #e6e9ef;
 	--fg-2: #f3f5f8;
@@ -188,17 +188,17 @@
 	--meta: #5b6470;
 	--dim: #1c2029;
 
-	--brand: #10b981;
+	--brand: #2dd4bf;
 	--brand-lo: #34d399;
-	--brand-glow: rgba(16, 185, 129, 0.40);
-	--brand-soft: rgba(16, 185, 129, 0.14);
-	--accent: #10b981;
-	--accent-on: #0a0d12;
-	--accent-soft: rgba(16, 185, 129, 0.14);
-	--accent-wash: rgba(16, 185, 129, 0.06);
-	--accent-border: rgba(16, 185, 129, 0.26);
-	--accent-ring: rgba(16, 185, 129, 0.32);
-	--accent-stripe: rgba(16, 185, 129, 0.34);
+	--brand-glow: rgba(45, 212, 191, 0.40);
+	--brand-soft: rgba(45, 212, 191, 0.14);
+	--accent: #2dd4bf;
+	--accent-on: #181b20;
+	--accent-soft: rgba(45, 212, 191, 0.14);
+	--accent-wash: rgba(45, 212, 191, 0.06);
+	--accent-border: rgba(45, 212, 191, 0.26);
+	--accent-ring: rgba(45, 212, 191, 0.32);
+	--accent-stripe: rgba(45, 212, 191, 0.34);
 
 	--danger: #f87171;
 	--danger-lo: #ef4444;
@@ -216,21 +216,21 @@
 	--speed-soft: rgba(251, 146, 60, 0.16);
 	--speed-wash: rgba(251, 146, 60, 0.16);
 
-	--success: #10b981;
-	--success-soft: rgba(16, 185, 129, 0.14);
+	--success: #0d9488;
+	--success-soft: rgba(45, 212, 191, 0.14);
 
 	--scene-sky-hi: #2e3440;
 	--scene-sky-mid: #252a35;
-	--scene-foliage: #14181f;
-	--scene-foliage-d: #0a0d12;
+	--scene-foliage: #20252c;
+	--scene-foliage-d: #181b20;
 	--scene-overlay: rgba(0, 0, 0, 0.30);
 
-	--pip-bg-1: #14181f;
-	--pip-bg-2: #0a0d12;
+	--pip-bg-1: #20252c;
+	--pip-bg-2: #181b20;
 	--pip-bg-3: #252a35;
 	--pip-skin-hi: #bcc0c6;
 	--pip-skin-lo: #8b95a3;
-	--pip-hair: #0a0d12;
+	--pip-hair: #181b20;
 	--pip-shadow: rgba(0, 0, 0, 0.50);
 
 	--overlay-dark: rgba(0, 0, 0, 0.55);
@@ -242,5 +242,5 @@
 	--elev-card: 0 1px 2px rgba(0, 0, 0, 0.40), 0 4px 12px -4px rgba(0, 0, 0, 0.50);
 	--elev-card-soft: 0 1px 2px rgba(0, 0, 0, 0.30);
 	--elev-pop: 0 8px 24px -8px rgba(0, 0, 0, 0.60);
-	--focus-ring: 0 0 0 3px rgba(16, 185, 129, 0.30);
+	--focus-ring: 0 0 0 3px rgba(45, 212, 191, 0.30);
 }

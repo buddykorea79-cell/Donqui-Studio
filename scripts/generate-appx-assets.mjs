@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { deflateSync, inflateSync } from "node:zlib";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE_ICON = path.join(ROOT, "icons", "icons", "png", "1024x1024.png");
+const SOURCE_ICON = path.join(ROOT, "icons", "donqui", "png", "1024x1024.png");
 const OUT_DIR = path.join(ROOT, "build", "appx");
 
 /**

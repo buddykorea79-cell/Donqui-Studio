@@ -5,10 +5,31 @@ bundle the pre-built native components below. This file ships inside the
 application resources and satisfies the attribution and source-offer obligations
 that come with them.
 
-npm dependencies are not listed here: they are resolved from `package.json` and
-distributed by their own registries, not redistributed inside our binaries.
+Most npm dependencies are bundled into the application JavaScript. The separately
+redistributed Remotion rendering runtime is listed below, with its package licenses
+preserved alongside its files.
 
 ---
+
+## Remotion — clip effects and preview
+
+- **Version**: 4.0.513, pinned in `package.json` and `package-lock.json`.
+- **Components**: the Remotion Player in the editor, the prebuilt clip composition,
+  and the renderer with its platform compositor and dependency tree under
+  `resources/remotion/runtime/node_modules/`.
+- **Used by**: Donqui Studio's ten clip effects, clip preview, and derived MP4 creation.
+- **Copyright**: © 2026 Remotion.
+- **License**: the Remotion License, separate from this application's MIT license.
+  The applicable terms are preserved in the Remotion packages' `LICENSE.md` files.
+  See the [upstream license](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md).
+  Remotion provides a free license for eligible individuals and organizations and
+  separate company-license terms; Donqui Studio does not add account-based feature gates.
+- **Source and native build scripts**: [remotion-dev/remotion](https://github.com/remotion-dev/remotion).
+- The platform compositor package includes its own FFmpeg executables and codec
+  libraries. Its Windows FFmpeg n7.1 build enables GPL components, including x264
+  and x265, and is separate from the LGPL-only capture/compositor runtime below.
+  FFmpeg's corresponding source is [FFmpeg n7.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1);
+  see [FFmpeg licensing](https://ffmpeg.org/legal.html) and Remotion's upstream build scripts.
 
 ## FFmpeg — shared libraries (Windows only)
 

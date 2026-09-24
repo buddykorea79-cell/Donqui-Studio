@@ -47,11 +47,14 @@ vi.mock("./LeftPanel", () => ({
 import { NewEditorShell } from "./NewEditorShell";
 
 function renderShell() {
-	return render(
+	const view = render(
 		<EditorDialogsProvider>
 			<NewEditorShell />
 		</EditorDialogsProvider>,
 	);
+	// New projects open on Audio; these assertions exercise the Edit-only chat.
+	fireEvent.click(screen.getByRole("tab", { name: "editor.topbar.modes.edit" }));
+	return view;
 }
 
 describe("NewEditorShell chatOpen behavior with useChatPromptBus", () => {

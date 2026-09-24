@@ -366,16 +366,13 @@
 	white-space: nowrap;
 }
 
-/* mode switch (Media / Edit / Rec) */
-/* Three EQUAL columns, not three content-sized buttons. `1fr` tracks in an
-   intrinsically-sized grid all take the width of the widest one, so the trio
-   stays symmetrical in every locale — English "Rec" next to "Media", French
-   "Enregistrement" next to "Médias" — and the hover/selected plate is the same
-   box on all three. */
+/* Content-sized columns keep all four mode labels visible without charging
+   every tab for the longest translation (for example French "Enregistrement").
+   Each button reserves its bold label below, so selecting a tab stays stable. */
 .modeSwitch {
 	margin: 0 auto;
 	display: inline-grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(4, max-content);
 	align-items: center;
 	gap: 2px;
 	padding: 3px;
@@ -460,32 +457,57 @@
 }
 
 /* ─── Responsive topbar rules ─── */
-@media (max-width: 1240px) {
+@media (max-width: 1680px) {
 	.topbar {
-		--topbar-gap: 10px;
+		--topbar-gap: 8px;
 		--topbar-project-w: 130px;
 	}
+	.savedLabel {
+		display: none;
+	}
+	.savedState {
+		gap: 0;
+	}
 	.modeSwitch button {
-		padding: 4px 10px;
+		padding-inline: 10px;
 	}
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1440px) {
 	.topbar {
-		--topbar-gap: 8px;
-		--topbar-icon: 30px;
-		--topbar-project-w: 100px;
-		padding-left: calc(12px + var(--titlebar-inset-left, 0px));
-		padding-right: calc(
-			12px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)
-		);
+		--topbar-gap: 7px;
+		--topbar-project-w: 110px;
 	}
+	/* Compact before the native Windows controls take their ~138px. The logo
+	   still opens the application menu; all actions and mode labels remain. */
 	.brand .name {
 		display: none;
 	}
 	.brandBtn {
 		margin: 0;
 		padding: 4px;
+	}
+	.sep {
+		display: none;
+	}
+	.topbarLead {
+		width: var(--topbar-icon);
+		gap: 0;
+	}
+	.modeSwitch button {
+		padding: 4px 8px;
+	}
+}
+
+@media (max-width: 1080px) {
+	.topbar {
+		--topbar-gap: 5px;
+		--topbar-icon: 30px;
+		--topbar-project-w: 90px;
+		padding-left: calc(12px + var(--titlebar-inset-left, 0px));
+		padding-right: calc(
+			12px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)
+		);
 	}
 	.langBtn {
 		padding: 0 5px;
@@ -495,9 +517,9 @@
 		display: none;
 	}
 	.modeSwitch button {
-		padding: 4px 8px;
+		padding: 4px 6px;
 		font-size: 11px;
-		max-width: 90px;
+		max-width: none;
 	}
 	.exportBtn {
 		padding: 0 10px;
@@ -508,28 +530,15 @@
 
 @media (max-width: 960px) {
 	.topbar {
-		--topbar-gap: 6px;
-		--topbar-project-w: 80px;
+		--topbar-gap: 4px;
+		--topbar-project-w: 70px;
 		padding-left: calc(8px + var(--titlebar-inset-left, 0px));
 		padding-right: calc(
 			8px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)
 		);
 	}
-	.sep {
-		display: none;
-	}
-	.topbarLead {
-		width: var(--topbar-icon);
-		gap: 0;
-	}
-	.savedLabel {
-		display: none;
-	}
 	.saved {
 		width: auto;
-	}
-	.savedState {
-		gap: 0;
 	}
 	.langIcon {
 		display: none;
@@ -538,17 +547,26 @@
 		width: auto;
 		font-size: 11px;
 	}
+	.modeSwitch button {
+		padding-inline: 4px;
+	}
 }
 
 @media (max-width: 850px) {
 	.topbar {
-		--topbar-gap: 4px;
-		--topbar-project-w: 70px;
+		--topbar-gap: 2px;
+		--topbar-icon: 28px;
+		--topbar-project-w: 50px;
 	}
 	.modeSwitch button {
-		padding: 3px 6px;
+		padding: 3px 3px;
 		font-size: 10.5px;
-		max-width: 70px;
+		max-width: none;
+	}
+	.topbar > .ghostBtn:not(.projectNameBtn) {
+		padding-inline: 5px;
+		gap: 4px;
+		font-size: 11px;
 	}
 	.exportLabel {
 		display: none;

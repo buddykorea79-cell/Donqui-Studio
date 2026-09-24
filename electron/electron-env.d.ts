@@ -290,6 +290,16 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		openImageClipPicker?: (duration: number) => Promise<{
+			success: boolean;
+			path?: string;
+			name?: string;
+			canceled?: boolean;
+			message?: string;
+		}>;
+		createClipEffect?: (
+			request: import("../src/lib/clip-effects/catalog").CreateClipEffectRequest,
+		) => Promise<import("../src/lib/clip-effects/catalog").CreateClipEffectResult>;
 		openVideoFilePicker: () => Promise<{
 			success: boolean;
 			path?: string;

@@ -4,7 +4,14 @@
 // disagreeing about which lane a project even has.
 
 import { describe, expect, it } from "vitest";
+import { projectRawTimelineSecToPlayback } from "../document/timeline";
 import type { AxcutAudioTrack, AxcutClip, AxcutDocument, AxcutTranscript } from "../schema";
+import {
+	buildAggregatedSections,
+	findCueWordId,
+	voiceoverPlacements,
+} from "../timeline/aggregated-transcript";
+import { removedRawSpans } from "../timeline/programme-time";
 import { deriveCaptionCues } from "./cues";
 import {
 	DEFAULT_CAPTION_SETTINGS,
@@ -99,6 +106,70 @@ const texts = (d: AxcutDocument, lane: "recording" | "voiceover") =>
 	deriveCaptionCues(d, on(lane), {}).map((c) => c.text);
 
 describe("captionLane", () => {
+	it("keeps locked narration words through visual cuts and places them at their unchanged programme times", () => {
+		const document = doc({
+			audioTracks: [{ ...VOICE, timelineLocked: true }],
+			transcripts: [words("aud", ["one", "two", "three", "four", "five", "six"])],
+		});
+		document.timeline.trimRanges = [
+			{
+				id: "cut",
+				clipId: "c1",
+				assetId: "rec",
+				startSec: 2,
+				endSec: 4,
+				origin: "user",
+				reason: "Visual trim",
+			},
+		];
+		const cues = deriveCaptionCues(
+			document,
+			{ ...on("voiceover"), minWordsPerLine: 1, maxWordsPerLine: 1 },
+			{},
+		);
+		const third = cues.find((cue) => cue.text === "three");
+		expect(third).toMatchObject({ startMs: 4000, endMs: 4900 });
+		expect(
+			projectRawTimelineSecToPlayback(
+				document.timeline.clips,
+				document.timeline.trimRanges,
+				(third?.startMs ?? 0) / 1000,
+			),
+		).toBe(2);
+		// Ordinary recorded takes still skip the words spoken over the removed picture.
+		expect(
+			deriveCaptionCues(
+				{ ...document, audioTracks: [VOICE] },
+				{ ...on("voiceover"), minWordsPerLine: 1, maxWordsPerLine: 1 },
+				{},
+			).some((cue) => cue.text === "three"),
+		).toBe(false);
+	});
+
+	it("projects locked narration captions and active words through a 2x picture without speeding the voice", () => {
+		const speeds = [{ id: "fast", startMs: 0, endMs: 6000, speed: 2 }];
+		const document = doc({
+			audioTracks: [{ ...VOICE, timelineLocked: true, offsetMs: 1000, endMs: 3000 }],
+			transcripts: [words("aud", ["skipped", "one", "two", "three"])],
+			legacyEditor: { speedRegions: speeds },
+		});
+		const cues = deriveCaptionCues(
+			document,
+			{ ...on("voiceover"), minWordsPerLine: 1, maxWordsPerLine: 1 },
+			{},
+		);
+		expect(cues.find((cue) => cue.text === "two")).toMatchObject({ startMs: 2000, endMs: 3800 });
+		expect(projectRawTimelineSecToPlayback(CLIPS, [], 2, speeds)).toBe(1);
+		const removed = removedRawSpans(CLIPS, []);
+		const sections = buildAggregatedSections(
+			voiceoverPlacements(document.audioTracks, removed, document),
+			document.transcripts,
+			[],
+			removed,
+		);
+		expect(findCueWordId(sections, 2.5)).toBe("vo:aud_w2");
+		expect(sections.flatMap((section) => section.words).every((word) => word.kept)).toBe(true);
+	});
 	it("defaults to the recording, and survives a round trip through the document", () => {
 		expect(DEFAULT_CAPTION_SETTINGS.captionLane).toBe("recording");
 		const next = patchCaptionSettings(doc(), { captionLane: "voiceover" });

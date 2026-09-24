@@ -638,7 +638,7 @@ export function buildSceneDescription(
 	// at an absolute offset — the export would contain the take playing on top of itself.
 	const voiceoverPills = new Map(
 		collapseTracksToPills(document.audioTracks)
-			.filter((pill) => pill.kind === "voiceover" && !pill.loop)
+			.filter((pill) => pill.kind === "voiceover" && !pill.loop && !pill.timelineLocked)
 			.map((pill) => [trackGroupId(pill), pill]),
 	);
 	const audioTracks = document.audioTracks.flatMap((track) => {
@@ -647,12 +647,14 @@ export function buildSceneDescription(
 		if (!asset?.originalPath) return [];
 		const sourceDurationSec = asset.durationSec ?? track.durationSec;
 		const offsetSec = track.offsetMs / 1000;
-		const startSec = projectRawTimelineSecToPlayback(
-			projectedClips,
-			document.timeline.trimRanges,
-			track.startMs / 1000,
-			rawSpeedRegions,
-		);
+		const startSec = track.timelineLocked
+			? track.startMs / 1000
+			: projectRawTimelineSecToPlayback(
+					projectedClips,
+					document.timeline.trimRanges,
+					track.startMs / 1000,
+					rawSpeedRegions,
+				);
 		// Length is measured WITHOUT speed, position WITH it — the two do different
 		// things to a track and must not be conflated.
 		//
@@ -673,7 +675,7 @@ export function buildSceneDescription(
 				document.timeline.trimRanges,
 				track.startMs / 1000,
 			);
-		const spanSec = trimmedSpanSec;
+		const spanSec = track.timelineLocked ? (track.endMs - track.startMs) / 1000 : trimmedSpanSec;
 		if (spanSec <= 0) return [];
 		const base = {
 			path: asset.originalPath,
@@ -696,7 +698,7 @@ export function buildSceneDescription(
 		// words whose redness has to be true. A LOOPING voiceover keeps it too — step 6 of
 		// #560 refuses that combination outright, and inventing semantics for something
 		// about to be banned would be the worse answer.
-		if (track.kind === "voiceover" && !track.loop) {
+		if (track.kind === "voiceover" && !track.loop && !track.timelineLocked) {
 			const groupId = trackGroupId(track);
 			const pill = voiceoverPills.get(groupId);
 			// Emitted from the group's HEAD fragment only — every other fragment of the same

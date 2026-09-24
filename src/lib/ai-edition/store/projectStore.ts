@@ -8,6 +8,7 @@ import { createId } from "../document/ids";
 import { type Interval, replaceTimeline as replaceTimelineOp } from "../document/timeline";
 import { type AxcutAsset, type AxcutDocument, createAudioTrack, documentSchema } from "../schema";
 import { probeAudioDuration, probeVideoDimensions } from "../timeline/duration";
+import { enqueueDocumentWrite } from "./documentWriteQueue";
 import { clearHistory, currentWriteEpoch, pushHistory } from "./undoStack";
 
 let documentSavesInFlight = 0;
@@ -350,95 +351,105 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 		// superseded the write while it was in flight.
 		const epoch = currentWriteEpoch();
 		const superseded = () => get().projectId !== projectId || currentWriteEpoch() !== epoch;
-		const result = await nativeBridgeClient.aiEdition.addAsset(projectId, path, label);
-		if (superseded()) return null;
-		let document = parseDocument(result.document);
-		const addedAsset =
-			document.assets.find((a) => a.originalPath === path && (label ? a.label === label : true)) ??
-			document.assets.at(-1) ??
-			null;
+		return enqueueDocumentWrite(async () => {
+			// Include the native read/add/write and the camera lookup in the same queue
+			// slot as timeline edits. Installing an import response after another edit
+			// saved used to restore its pre-edit timeline, both in memory and on disk.
+			if ((await waitForDocumentSaves()) !== "idle" || superseded()) return null;
+			const result = await nativeBridgeClient.aiEdition.addAsset(projectId, path, label);
+			if (superseded()) return null;
+			let document = parseDocument(result.document);
+			const addedAsset =
+				document.assets.find(
+					(a) => a.originalPath === path && (label ? a.label === label : true),
+				) ??
+				document.assets.at(-1) ??
+				null;
 
-		// P4 — auto-link the camera track from the recording-links registry (or
-		// its legacy sidecar) for EVERY asset added, not just the first one in
-		// the project: a project can hold multiple recordings, each with its
-		// own camera (or none). The link is stored on the asset itself, not a
-		// document-global field, so it follows the right clip in the timeline.
-		// The camera DSL is read-only — cuts/zoom/speed live on the main
-		// timeline and apply to the camera via the shared source-time
-		// progression.
-		if (addedAsset && window.electronAPI?.findRecordingCamera) {
-			try {
-				const camera = await window.electronAPI.findRecordingCamera(addedAsset.originalPath);
-				if (camera.success && camera.webcamVideoPath) {
-					// Stamp the camera's real dimensions at link time so a new recording never
-					// needs the backfill in `useTimeline`. They decide the PiP's layout box, and
-					// without them it falls back to a hardcoded 4:3 — which is how a 16:9 camera
-					// used to be framed one way in the preview and another in an export.
-					//
-					// Deliberately outside the shape below and deliberately non-fatal: a probe
-					// that fails must leave the link intact and let the backfill try again later,
-					// never take the `catch` that drops the camera from the recording entirely.
-					const camDims = await probeVideoDimensions(toFileUrl(camera.webcamVideoPath)).catch(
-						() => null,
+			// P4 — auto-link the camera track from the recording-links registry (or
+			// its legacy sidecar) for EVERY asset added, not just the first one in
+			// the project: a project can hold multiple recordings, each with its
+			// own camera (or none). The link is stored on the asset itself, not a
+			// document-global field, so it follows the right clip in the timeline.
+			// The camera DSL is read-only — cuts/zoom/speed live on the main
+			// timeline and apply to the camera via the shared source-time
+			// progression.
+			if (addedAsset && window.electronAPI?.findRecordingCamera) {
+				try {
+					const camera = await window.electronAPI.findRecordingCamera(addedAsset.originalPath);
+					if (superseded()) return null;
+					if (camera.success && camera.webcamVideoPath) {
+						// Stamp the camera's real dimensions at link time so a new recording never
+						// needs the backfill in `useTimeline`. They decide the PiP's layout box, and
+						// without them it falls back to a hardcoded 4:3 — which is how a 16:9 camera
+						// used to be framed one way in the preview and another in an export.
+						//
+						// Deliberately outside the shape below and deliberately non-fatal: a probe
+						// that fails must leave the link intact and let the backfill try again later,
+						// never take the `catch` that drops the camera from the recording entirely.
+						const camDims = await probeVideoDimensions(toFileUrl(camera.webcamVideoPath)).catch(
+							() => null,
+						);
+						const linked = {
+							sourcePath: camera.webcamVideoPath,
+							startMs: 0,
+							// ROUNDED, because `cameraTrackSchema` requires an integer and
+							// the native capture paths measure this offset with
+							// `performance.now()`, whose resolution is 100 µs — so roughly
+							// nine recordings in ten produced something like -192.8 here.
+							// `parseDocument` below then threw, the catch treated it as a
+							// lookup failure, and the camera was dropped from a recording
+							// that had one: the editor showed the screen video in the
+							// camera's place. Sub-millisecond precision is meaningless for
+							// a frame offset (a 60 fps frame is 16.7 ms), so rounding costs
+							// nothing. Recordings already on disk carry the fractional
+							// value in their session manifest, which is why this rounds on
+							// the way IN rather than only at the recorder.
+							offsetMs: Math.round(camera.offsetMs ?? 0),
+							visible: true,
+							...(camDims ?? {}),
+						};
+						const next: AxcutDocument = {
+							...document,
+							assets: document.assets.map((a) =>
+								a.id === addedAsset.id ? { ...a, cameraTrack: linked } : a,
+							),
+						};
+						// Only adopt the linked document if it actually reached disk -- otherwise
+						// the caller is handed a document claiming a camera link the file does not
+						// have. The store has already told the user the write failed.
+						// `history: false`: linking a camera is part of adding the asset, not an
+						// edit of its own -- and `get().document` here is still the pre-add document,
+						// so recording it would make Ctrl+Z jump back past the import.
+						if (superseded()) return null;
+						if (await get().saveDocument(next, { history: false })) document = parseDocument(next);
+					}
+					// success:false just means no camera was found for this asset —
+					// the normal case for a plain imported video. Nothing to surface.
+				} catch (err) {
+					// An actual lookup failure (not "no camera found") — worth surfacing.
+					// Logged as well as toasted: a toast is gone in five seconds, and the
+					// symptom this produces (a recording that silently loses its camera)
+					// is reported from the editor, long after.
+					console.warn("[project] camera auto-link failed:", err);
+					const name = addedAsset.originalPath.split(/[\\/]/).pop() ?? addedAsset.originalPath;
+					void import("sonner").then(({ toast }) =>
+						toast.error(`Could not check for a camera recording near ${name}`, {
+							description: err instanceof Error ? err.message : String(err),
+						}),
 					);
-					const linked = {
-						sourcePath: camera.webcamVideoPath,
-						startMs: 0,
-						// ROUNDED, because `cameraTrackSchema` requires an integer and
-						// the native capture paths measure this offset with
-						// `performance.now()`, whose resolution is 100 µs — so roughly
-						// nine recordings in ten produced something like -192.8 here.
-						// `parseDocument` below then threw, the catch treated it as a
-						// lookup failure, and the camera was dropped from a recording
-						// that had one: the editor showed the screen video in the
-						// camera's place. Sub-millisecond precision is meaningless for
-						// a frame offset (a 60 fps frame is 16.7 ms), so rounding costs
-						// nothing. Recordings already on disk carry the fractional
-						// value in their session manifest, which is why this rounds on
-						// the way IN rather than only at the recorder.
-						offsetMs: Math.round(camera.offsetMs ?? 0),
-						visible: true,
-						...(camDims ?? {}),
-					};
-					const next: AxcutDocument = {
-						...document,
-						assets: document.assets.map((a) =>
-							a.id === addedAsset.id ? { ...a, cameraTrack: linked } : a,
-						),
-					};
-					// Only adopt the linked document if it actually reached disk -- otherwise
-					// the caller is handed a document claiming a camera link the file does not
-					// have. The store has already told the user the write failed.
-					// `history: false`: linking a camera is part of adding the asset, not an
-					// edit of its own -- and `get().document` here is still the pre-add document,
-					// so recording it would make Ctrl+Z jump back past the import.
-					if (await get().saveDocument(next, { history: false })) document = parseDocument(next);
 				}
-				// success:false just means no camera was found for this asset —
-				// the normal case for a plain imported video. Nothing to surface.
-			} catch (err) {
-				// An actual lookup failure (not "no camera found") — worth surfacing.
-				// Logged as well as toasted: a toast is gone in five seconds, and the
-				// symptom this produces (a recording that silently loses its camera)
-				// is reported from the editor, long after.
-				console.warn("[project] camera auto-link failed:", err);
-				const name = addedAsset.originalPath.split(/[\\/]/).pop() ?? addedAsset.originalPath;
-				void import("sonner").then(({ toast }) =>
-					toast.error(`Could not check for a camera recording near ${name}`, {
-						description: err instanceof Error ? err.message : String(err),
-					}),
-				);
 			}
-		}
 
-		if (superseded()) return null;
-		set({
-			document,
-			revision: get().revision + 1,
-			dirty: false,
-			lastSavedAt: new Date(),
+			if (superseded()) return null;
+			set({
+				document,
+				revision: get().revision + 1,
+				dirty: false,
+				lastSavedAt: new Date(),
+			});
+			return addedAsset;
 		});
-		return addedAsset;
 	},
 
 	async addAudioAsset(path, label) {
@@ -448,42 +459,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 		// save all await, and a project switch / clear can land in between.
 		const epoch = currentWriteEpoch();
 		const superseded = () => get().projectId !== projectId || currentWriteEpoch() !== epoch;
-		const result = await nativeBridgeClient.aiEdition.addAsset(projectId, path, label, "audio");
-		if (superseded()) return null;
-		let document = parseDocument(result.document);
-		const addedAsset =
-			document.assets.find(
-				(a) => a.kind === "audio" && a.originalPath === path && (label ? a.label === label : true),
-			) ??
-			document.assets.at(-1) ??
-			null;
-		if (!addedAsset) return null;
+		return enqueueDocumentWrite(async () => {
+			if ((await waitForDocumentSaves()) !== "idle" || superseded()) return null;
+			const result = await nativeBridgeClient.aiEdition.addAsset(projectId, path, label, "audio");
+			if (superseded()) return null;
+			let document = parseDocument(result.document);
+			const addedAsset =
+				document.assets.find(
+					(a) =>
+						a.kind === "audio" && a.originalPath === path && (label ? a.label === label : true),
+				) ??
+				document.assets.at(-1) ??
+				null;
+			if (!addedAsset) return null;
 
-		// Probe the real length so the timeline can size the track pill immediately
-		// on add. Non-fatal: an unreadable file just leaves durationSec unset and the
-		// track store falls back to a placeholder. No camera lookup — audio has none.
-		const durationSec = await probeAudioDuration(toFileUrl(addedAsset.originalPath)).catch(
-			() => null,
-		);
-		if (superseded()) return null;
-		if (durationSec != null) {
-			const next: AxcutDocument = {
-				...document,
-				assets: document.assets.map((a) => (a.id === addedAsset.id ? { ...a, durationSec } : a)),
-			};
-			// history: false — probing a duration is part of the import, not an edit
-			// of its own, so it must not become the thing the next Ctrl+Z reverses.
-			if (await get().saveDocument(next, { history: false })) document = parseDocument(next);
-		}
+			// Probe the real length so the timeline can size the track pill immediately
+			// on add. Non-fatal: an unreadable file just leaves durationSec unset and the
+			// track store falls back to a placeholder. No camera lookup — audio has none.
+			const durationSec = await probeAudioDuration(toFileUrl(addedAsset.originalPath)).catch(
+				() => null,
+			);
+			if (superseded()) return null;
+			if (durationSec != null) {
+				const next: AxcutDocument = {
+					...document,
+					assets: document.assets.map((a) => (a.id === addedAsset.id ? { ...a, durationSec } : a)),
+				};
+				// history: false — probing a duration is part of the import, not an edit
+				// of its own, so it must not become the thing the next Ctrl+Z reverses.
+				if (await get().saveDocument(next, { history: false })) document = parseDocument(next);
+			}
 
-		if (superseded()) return null;
-		set({
-			document,
-			revision: get().revision + 1,
-			dirty: false,
-			lastSavedAt: new Date(),
+			if (superseded()) return null;
+			set({
+				document,
+				revision: get().revision + 1,
+				dirty: false,
+				lastSavedAt: new Date(),
+			});
+			return document.assets.find((a) => a.id === addedAsset.id) ?? addedAsset;
 		});
-		return document.assets.find((a) => a.id === addedAsset.id) ?? addedAsset;
 	},
 
 	setSelectedAudioTrackId(id) {

@@ -1969,6 +1969,79 @@ describe("buildSceneDescription.annotations", () => {
 // --- captions --------------------------------------------------------------
 
 describe("buildSceneDescription.captions", () => {
+	it("exports locked narration captions over the surviving accelerated picture", () => {
+		const document = makeDoc({
+			assets: [
+				makeAsset({ id: "picture", originalPath: "/picture.mp4", durationSec: 10 }),
+				makeAsset({ id: "voice", originalPath: "/voice.wav", kind: "audio", durationSec: 6 }),
+			],
+			clips: [
+				makeClip({
+					id: "c1",
+					assetId: "picture",
+					sourceStartSec: 0,
+					sourceEndSec: 10,
+					timelineStartSec: 0,
+					timelineEndSec: 10,
+				}),
+			],
+			timeline: {
+				trimRanges: [
+					{
+						id: "cut",
+						clipId: "c1",
+						assetId: "picture",
+						startSec: 2,
+						endSec: 4,
+						origin: "user",
+						reason: "Visual cut",
+					},
+				],
+			},
+			audioTracks: [
+				{
+					id: "vo",
+					assetId: "voice",
+					kind: "voiceover",
+					timelineLocked: true,
+					startMs: 0,
+					endMs: 6000,
+					durationSec: 6,
+					offsetMs: 0,
+					gainDb: 0,
+					loop: false,
+					fadeInMs: 0,
+					fadeOutMs: 0,
+					muted: false,
+					label: "Narration",
+					origin: "user",
+				},
+			],
+			legacyEditor: {
+				speedRegions: [{ id: "fast", startMs: 4000, endMs: 8000, speed: 2 }],
+				captions: {
+					enabled: true,
+					captionLane: "voiceover",
+					minWordsPerLine: 1,
+					maxWordsPerLine: 1,
+				},
+			},
+		});
+		document.transcripts = [
+			{
+				assetId: "voice",
+				language: "en",
+				segments: [],
+				words: [{ id: "word", segmentId: "s", text: "Narration", startSec: 2.5, endSec: 3.5 }],
+			},
+		];
+		const scene = buildSceneDescription(document);
+		expect(
+			scene.annotations.find((annotation) => annotation.text?.content === "Narration"),
+		).toMatchObject({ startSec: 5, endSec: 7, clipIndex: 1 });
+		expect(scene.audioTracks[0]).toMatchObject({ startSec: 0, trimStartSec: 0, trimEndSec: 6 });
+	});
+
 	function docWithCaptions(enabled: boolean) {
 		const doc = makeDoc({
 			assets: [makeAsset({ id: "a1", originalPath: "/tmp/a1.mp4", durationSec: 30 })],
@@ -2165,6 +2238,26 @@ describe("buildSceneDescription.audioTracks", () => {
 			audioTracks: [{ ...track, endMs: 45_000 }],
 		});
 		expect(buildSceneDescription(doc).audioTracks[0]?.trimEndSec).toBe(30);
+	});
+
+	it.each([
+		"music",
+		"voiceover",
+	] as const)("keeps Audio-tab %s on the programme clock across visual trims and speed changes", (kind) => {
+		const locked = { ...track, kind, timelineLocked: true };
+		const doc = cutDoc([locked]);
+		doc.legacyEditor = { speedRegions: [{ id: "fast", startMs: 0, endMs: 10_000, speed: 2 }] };
+		expect(buildSceneDescription(doc).audioTracks).toEqual([
+			{
+				path: "/music.mp3",
+				startSec: 5,
+				trimStartSec: 2,
+				trimEndSec: 12,
+				gainDb: -3,
+				fadeInSec: 0,
+				fadeOutSec: 0,
+			},
+		]);
 	});
 
 	// ─── A cut under a voiceover ────────────────────────────────────────────────

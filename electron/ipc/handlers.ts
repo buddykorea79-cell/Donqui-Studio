@@ -16,7 +16,7 @@ import {
 	shell,
 	systemPreferences,
 } from "electron";
-import type { AxcutDocument } from "../../src/lib/ai-edition/schema";
+import { type AxcutDocument, documentSchema } from "../../src/lib/ai-edition/schema";
 import {
 	type NativeLinuxRecordingRequest,
 	portalCursorMode,
@@ -64,11 +64,13 @@ import { mainT } from "../i18n";
 import { getInstallChannel } from "../install-channel";
 import { RECORDINGS_DIR } from "../main";
 import { type AudioPeaksResult, getAudioPeaks } from "../media/audioPeaks";
+import { createClipEffect } from "../media/clipEffects";
 import {
 	readCursorRecordingFile as readCursorRecordingFileFrom,
 	readCursorSidecar,
 	readCursorTelemetryFile as readCursorTelemetryFileFrom,
 } from "../media/cursorSidecar";
+import { createImageClip, IMAGE_EXTENSIONS } from "../media/imageClip";
 import { findMediaLinksByFingerprint, registerMediaLinks } from "../media/mediaLinksRegistry";
 import { relinkProjectMedia } from "../media/projectMediaRelinker";
 import {
@@ -3926,6 +3928,59 @@ export function registerIpcHandlers(
 
 	// The media tab imports VIDEO (it arranges clips). Audio is imported from the
 	// timeline toolbar instead (issue #350) — see `open-audio-file-picker` below.
+	ipcMain.handle(
+		"create-clip-effect",
+		async (
+			_event,
+			request: import("../../src/lib/clip-effects/catalog").CreateClipEffectRequest,
+		) => {
+			try {
+				const sourcePath = request && resolveApprovedVideoPath(request.sourcePath);
+				if (!sourcePath) throw new Error("Choose an imported video or photo first");
+				const base = app.isPackaged
+					? path.join(process.resourcesPath, "remotion")
+					: path.join(app.getAppPath(), "dist-remotion");
+				const output = await createClipEffect(
+					{ ...request, sourcePath },
+					path.join(app.getPath("userData"), "media", "clip-effects"),
+					{
+						bundlePath: path.join(base, "bundle"),
+						runtimePath: app.isPackaged ? path.join(base, "runtime") : app.getAppPath(),
+					},
+				);
+				approveFilePath(output.filePath);
+				return { success: true, ...output };
+			} catch (error) {
+				return { success: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+	);
+	ipcMain.handle("open-image-clip-picker", async (_event, duration: number) => {
+		try {
+			if (!Number.isFinite(duration) || duration < 0.5 || duration > 600)
+				throw new Error("Photo duration must be between 0.5 and 600 seconds");
+			const result = await dialog.showOpenDialog(
+				buildDialogOptions(
+					{
+						title: "Donqui Studio · 사진 추가",
+						filters: [{ name: "Photos", extensions: IMAGE_EXTENSIONS }],
+						properties: ["openFile"],
+					},
+					getMainWindow(),
+				),
+			);
+			if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
+			const output = await createImageClip(
+				result.filePaths[0],
+				duration,
+				path.join(app.getPath("userData"), "media", "image-clips"),
+			);
+			approveFilePath(output);
+			return { success: true, path: output, name: path.basename(result.filePaths[0]) };
+		} catch (error) {
+			return { success: false, message: error instanceof Error ? error.message : String(error) };
+		}
+	});
 	ipcMain.handle("open-video-file-picker", async () => {
 		try {
 			const dialogOptions = buildDialogOptions(
@@ -4354,6 +4409,8 @@ export function registerIpcHandlers(
 			const filePath = result.filePaths[0];
 			const content = await fs.readFile(filePath, "utf-8");
 			const project = await relinkProjectMedia(JSON.parse(content), RECORDINGS_DIR);
+			const currentDocument = documentSchema.safeParse(project);
+			if (currentDocument.success) approveDocumentMedia(currentDocument.data);
 			currentProjectPath = filePath;
 			let session: RecordingSession | null = null;
 			try {
