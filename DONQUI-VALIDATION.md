@@ -85,3 +85,36 @@ Asked for: work on many clips from many videos at once, as AutoVeo does; preview
 - No computer-use was available, so nothing was driven by real OS mouse or keyboard input; the Playwright/CDP clicks above are not counted as such, and real file-picker dialogs were replaced inside the smoke runs.
 - Narration: pause snapping is covered by unit and component tests on a transcript; it was not run on a real narration file transcribed by the app's Whisper engine.
 - Not built or checked: an installer, macOS, Linux, other Ollama models or versions, sources with rotation metadata in a real run, very long compositions (dozens of 4K renders).
+
+# Audio layers, mixed into one track for Media — 2026-09-25
+
+Asked for: several audio files — music, narration — read into the Audio tab; a timeline at the bottom where each is edited on its own layer; **반영** turning the edit into one audio that Media uses; volume set in percent rather than dB; and a way to listen before it reaches Media.
+
+## What changed
+
+- **Layers.** The Audio tab imports several files per pick. Each becomes a layer, music or narration, on its own row of a timeline docked under the page, placed after the last layer of its kind so narrations imported together line up in order. A layer moves by dragging, trims at either edge (the in-point carries the start with it, so what plays stays put), and snaps to 0, the playhead and the other layers' edges; arrow keys nudge it by 0.1 s (Shift: 1 s), and each row has a mute. The selected layer's panel sets its **volume in percent** (0–400%, 100% the file's own level; slider, field, 50/100/150% presets), fades, start, source in/out, kind, mute and delete. Waveforms come from the existing native peaks; the view zooms ×1–×8.
+- **미리듣기.** The layers play together on the page's clock, through the same playback and fade helpers as the programme preview; above 100% the level goes through a gain node. Space, the ruler and a position slider drive it.
+- **Media에 반영.** The main process mixes the audible layers with FFmpeg into a content-addressed 48 kHz stereo WAV in `media/audio-mixes`. Each layer is trimmed, resampled, set in level and faded, then delayed by a whole number of samples; `amix` sums the layers without renormalising, so each sounds as loud as it was set, and the result is padded or cut to the exact length. The programme's audio becomes that one track, locked to the programme clock from 0, in one undoable edit. The mix it replaces, and audio nothing holds any more, are dropped. The status reads 반영됨, 다시 반영 after a change, or not applied; Media names the mix and its layers and says when Audio has changes not yet applied.
+- **Narration stays narration.** A mix with narration in it is a voiceover track, so captions and Media's cuts on pauses read it. Narration layers are transcribed when imported. Once every audible one is, the mix carries their words at the times it plays them, and a word corrected on the previous mix keeps its correction. Until then, the mix is transcribed like any narration.
+- **Existing projects.** Audio tracks the programme already plays become layers when the Audio tab opens (no undo step); the programme sounds the same until the board is applied. Removing an audio asset takes its layers off the board.
+- Schema: optional `audioBoard` (layers and the applied mix), additive like `mediaBoard`. Main process: `open-audio-files-picker` and `create-audio-mix`, which re-checks every path against the approved set and every range and fade before FFmpeg sees it.
+
+## Automated checks
+
+- Full unit suite: 274 files, 3,365 passed, 9 skipped. New: audio board (placement, clamping, adoption of programme tracks, mix request, status, apply, mix transcript and carried corrections), mixer (request validation, the exact filter graph, channel and peak parsing), Audio stage (multi-import, adoption without an undo step, settings, drag, trim, nudge, mute, preview clock, apply, clipping warning, failure, a mix overtaken by an undo, change detection), Media's mix line and pending note, narration layers' transcription, asset removal. Both typechecks pass; Biome reports no errors (the same 25 warnings); i18n and docs checks pass.
+- The mixer against the bundled FFmpeg 8.1, before it was wired in: a mono narration at 50% measured −12.0 dB on each side against its −6 dB source; a two-layer mix with fades and a 2.5 s delay measured window by window (start, fades and end where set); an identical request reused its WAV in 3 ms against 305 ms to make it.
+- `node scripts/donqui-smoke.cjs` (real Electron): 8 s music as a layer, trimmed to 5 s at 80%, and a 3 s mono narration from 1 s; previewed; applied as a 5.000 s stereo WAV whose peaks read −20.0 dB with the music alone (80% of a −18 dBFS mono file, at full level on both sides), −13.4 dB with the narration, and −20.0 dB after it. Then V.Clip, Media fitted to the mix, apply, MP4 export with audio, restart and re-apply: all 7 steps.
+- `node scripts/vclip-smoke.cjs` on two DJI clips and a photo, `--no-ai`: the 20 s music as a layer, applied; three segments split, composed with the photo, fitted to 20 s with no footage shown twice; four renders in 198 s, the timeline ending at 20.00 s.
+
+## Found along the way
+
+- **FFmpeg makes mono 3 dB quieter than a player does.** Converting a mono file to stereo, FFmpeg applies √½ to each side (the center mix level for a mono input is fixed; `clev` does not change it), while Chromium plays mono at full level on both. A mono narration — the usual phone or TTS file — would have come out 3 dB quieter in the mix than in 미리듣기. The mixer now reads each file's channels and spreads mono itself.
+- **volumedetect cannot see clipping.** It counts in 16 bits and reads 0.0 dB for any mix that clips; astats reads the float peak (+6.0 dB on a +6 dB test tone). The mix's peak comes from astats, and a mix that clips says by how many percent the layers must come down.
+- **A click did not select a layer.** Selection happened on pointer release, which a keyboard or assistive-technology click never produces; the component test caught it, and a click now selects.
+- **The volume slider drew as a white bar** without a thumb in the first real run; it is styled like the page's other sliders, and the docked timeline now takes the height its rows need instead of a fixed 320 px.
+
+## Not covered
+
+- No computer-use: the layer timeline was not dragged with a real mouse. Drags were driven by synthetic pointer events in component tests, and the smoke sets positions through the fields.
+- Mixing a narration's words into the mix's transcript is unit-tested on transcripts; no real narration was transcribed by the app's Whisper engine and applied.
+- Only by the unit-tested command: long mixes (minutes, many layers) and files with surround layouts.
