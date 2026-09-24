@@ -16,3 +16,6 @@ CMakeLists.txt text eol=lf
 # so the next one-line edit showed up as a whole-file rewrite in two locales.
 *.md   text eol=lf
 *.mdx  text eol=lf
+# cmd.exe misreads labels and blocks in LF-only batch files.
+*.cmd  text eol=crlf
+*.bat  text eol=crlf

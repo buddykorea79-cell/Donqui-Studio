@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,9 @@ await bundle({
 const runtime = path.join(output, "runtime");
 await mkdir(runtime, { recursive: true });
 await writeFile(path.join(runtime, "package.json"), '{"private":true}\n');
+// Real path: a worktree's node_modules is usually a junction to the main checkout's, and
+// require.resolve answers with the target.
+const nodeModules = await realpath(path.join(root, "node_modules"));
 const staged = new Set();
 async function stagePackage(name, fromDirectory, optional = false) {
 	const resolveFrom = createRequire(path.join(fromDirectory, "package.json"));
@@ -48,7 +51,7 @@ async function stagePackage(name, fromDirectory, optional = false) {
 	const directory = path.dirname(manifestPath);
 	if (staged.has(directory)) return;
 	staged.add(directory);
-	const relative = path.relative(path.join(root, "node_modules"), directory);
+	const relative = path.relative(nodeModules, directory);
 	if (relative.startsWith("..") || path.isAbsolute(relative))
 		throw new Error(`Install dependencies in this checkout before building: ${directory}`);
 	const destination = path.join(runtime, "node_modules", relative);
