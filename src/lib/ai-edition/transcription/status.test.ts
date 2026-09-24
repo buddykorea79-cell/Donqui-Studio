@@ -466,6 +466,18 @@ describe("assetCanCarrySpeech", () => {
 		expect(assetCanCarrySpeech(doc([track("voiceover", "other")]), "aud")).toBe(false);
 	});
 
+	it("says yes to a narration layer on the Audio tab, and no to a music one", () => {
+		// Its words become the mix's when the board is applied, so it is worth transcribing
+		// before anything plays it.
+		const board = (kind: "voiceover" | "music") =>
+			({
+				...doc([]),
+				audioBoard: { layers: [{ id: "l", assetId: "aud", kind }] },
+			}) as unknown as Parameters<typeof assetCanCarrySpeech>[0];
+		expect(assetCanCarrySpeech(board("voiceover"), "aud")).toBe(true);
+		expect(assetCanCarrySpeech(board("music"), "aud")).toBe(false);
+	});
+
 	it("says no to an asset that is not in the document", () => {
 		expect(assetCanCarrySpeech(doc([]), "ghost")).toBe(false);
 	});

@@ -364,8 +364,12 @@ export function assetCanCarrySpeech(document: AxcutDocument, assetId: string): b
 	const asset = document.assets.find((a) => a.id === assetId);
 	if (!asset) return false;
 	if (asset.kind !== "audio") return true;
-	return document.audioTracks.some(
-		(track) => track.assetId === assetId && track.kind === "voiceover",
+	return (
+		document.audioTracks.some((track) => track.assetId === assetId && track.kind === "voiceover") ||
+		// A narration on the Audio tab's board: its words become the mix's once it is applied.
+		(document.audioBoard?.layers ?? []).some(
+			(layer) => layer.assetId === assetId && layer.kind === "voiceover",
+		)
 	);
 }
 

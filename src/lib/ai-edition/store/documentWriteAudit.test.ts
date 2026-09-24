@@ -168,10 +168,6 @@ const DECLARED: WritePath[] = [
 	w("src/components/ai-edition/NewEditorShell.tsx", "pasteRegion", "save", "gesture"),
 	// The window is closing and the user answered "save".
 	w("src/components/ai-edition/NewEditorShell.tsx", "unsubSaveBeforeClose", "save", "gesture"),
-	// Audio imports, settings, and removal are explicit edits in the Audio stage.
-	w("src/components/ai-edition/v4/AudioStage.tsx", "AudioTrackEditor", "save", "gesture"),
-	w("src/components/ai-edition/v4/AudioStage.tsx", "importAudio", "save", "gesture"),
-	w("src/components/ai-edition/v4/AudioStage.tsx", "save", "save", "gesture"),
 	// Media's composition onto the timeline: one undoable edit for the whole batch, once
 	// its renders are done.
 	w("src/lib/media-board/apply.ts", "applyComposition", "save", "gesture"),

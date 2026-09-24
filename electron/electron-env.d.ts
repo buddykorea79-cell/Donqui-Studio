@@ -331,6 +331,19 @@ interface Window {
 			imagePath: string,
 			duration: number,
 		) => Promise<import("../src/lib/clip-effects/catalog").CreateClipEffectResult>;
+		openAudioFilesPicker?: () => Promise<{
+			success: boolean;
+			canceled?: boolean;
+			files: Array<{ path: string; name: string }>;
+			rejected: string[];
+			message?: string;
+		}>;
+		createAudioMix?: (
+			request: import("./media/audioMix").AudioMixRequest,
+		) => Promise<
+			| ({ success: true } & import("./media/audioMix").AudioMixResult)
+			| { success: false; error: string }
+		>;
 		openVideoFilePicker: () => Promise<{
 			success: boolean;
 			path?: string;

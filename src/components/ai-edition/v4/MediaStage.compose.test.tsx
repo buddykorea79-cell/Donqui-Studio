@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/contexts/I18nContext";
 import { LOCALE_STORAGE_KEY } from "@/i18n/config";
@@ -11,6 +11,14 @@ import {
 	createEmptyDocument,
 } from "@/lib/ai-edition/schema";
 import { useProjectStore } from "@/lib/ai-edition/store/projectStore";
+import {
+	addLayers,
+	applyMix,
+	audioBoardOf,
+	mixSignature,
+	mixSpec,
+	updateLayer,
+} from "@/lib/audio-board/board";
 import {
 	addBoardImages,
 	addBoardItems,
@@ -259,6 +267,41 @@ describe("Media's composition", () => {
 		expect(mocks.toast.warning).toHaveBeenCalledWith("조합을 Audio 길이 0:20.0에 맞췄습니다.", {
 			description: expect.stringContaining("같은 장면을 다시 씁니다"),
 		});
+	});
+
+	it("names the Audio tab's mix, and says when its layers changed since", async () => {
+		const audio = (id: string, durationSec: number) => ({
+			id,
+			kind: "audio" as const,
+			label: `${id}.mp3`,
+			originalPath: `C:/audio/${id}.mp3`,
+			durationSec,
+			cameraTrack: null,
+		});
+		const layered = addLayers(
+			{ ...project(), assets: [drone, audio("song", 12), audio("voice", 5)], audioTracks: [] },
+			[
+				{ assetId: "song", kind: "music", label: "", durationSec: 12 },
+				{ assetId: "voice", kind: "voiceover", label: "", durationSec: 5 },
+			],
+		).document;
+		const applied = applyMix(
+			{ ...layered, assets: [...layered.assets, audio("mix", 12)] },
+			{ assetId: "mix", durationSec: 12, signature: mixSignature(mixSpec(layered)) },
+		);
+		useProjectStore.setState({ document: applied });
+		renderMedia();
+		expect(
+			within(composition()).getByText(/오디오 믹스 · 음악 1개 · 나레이션 1개/),
+		).toBeInTheDocument();
+		expect(within(composition()).queryByRole("status")).not.toBeInTheDocument();
+		const song = audioBoardOf(applied).layers[0];
+		act(() =>
+			useProjectStore.setState({ document: updateLayer(applied, song.id, { volume: 40 }) }),
+		);
+		expect(await within(composition()).findByRole("status")).toHaveTextContent(
+			"Audio 탭에서 바꾼 오디오가 아직 반영되지 않았습니다.",
+		);
 	});
 
 	it("offers cuts on the narration's pauses once it is transcribed", () => {

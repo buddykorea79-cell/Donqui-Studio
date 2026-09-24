@@ -57,6 +57,7 @@
 .fit strong { color: var(--fg-emphasis); }
 .fit [data-tone="ok"] { color: var(--success); font-weight: 600; }
 .fit [data-tone="off"] { color: var(--warn); font-weight: 600; }
+.fitPending { margin: 0; font-size: 12px; color: var(--warn); }
 .fitBar { display: grid; gap: 3px; }
 .fitLane { position: relative; height: 12px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
 .fitLane span { position: absolute; top: 0; bottom: 0; }

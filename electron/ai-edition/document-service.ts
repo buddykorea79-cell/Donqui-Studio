@@ -421,6 +421,17 @@ export class DocumentService {
 						},
 					}
 				: {}),
+			// Audio layers of it go, and a mix of it stops being the applied one.
+			...(withoutAssetClips.audioBoard
+				? {
+						audioBoard: {
+							layers: withoutAssetClips.audioBoard.layers.filter((l) => l.assetId !== assetId),
+							...(withoutAssetClips.audioBoard.mix?.assetId === assetId
+								? {}
+								: { mix: withoutAssetClips.audioBoard.mix }),
+						},
+					}
+				: {}),
 			timeline: {
 				...withoutAssetClips.timeline,
 				trimRanges: withoutAssetClips.timeline.trimRanges.filter((r) => r.assetId !== assetId),

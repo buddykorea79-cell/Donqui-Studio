@@ -55,6 +55,7 @@ import {
 	ventilateTimelineSpanToTrims,
 } from "@/lib/ai-edition/timeline/trim-mapping";
 import { firstTimelineBusyView } from "@/lib/ai-edition/transcription/status";
+import { audioBoardOf, mixDurationSec } from "@/lib/audio-board/board";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { useVClipStore } from "@/lib/vclip/store";
 import { nativeBridgeClient } from "@/native";
@@ -646,11 +647,9 @@ export function NewEditorShell() {
 
 	const togglePlay = useCallback(() => {
 		if (mode === "audio") {
+			// Audio previews its layers, before and after they are mixed.
 			const state = useProjectStore.getState();
-			const end = Math.max(
-				0,
-				...(state.document?.audioTracks.map((track) => track.endMs / 1000) ?? []),
-			);
+			const end = mixDurationSec(audioBoardOf(state.document).layers);
 			if (end <= 0) return;
 			if (!state.playing && state.currentTimeSec >= end) state.setCurrentTime(0);
 			state.setPlaying(!state.playing);

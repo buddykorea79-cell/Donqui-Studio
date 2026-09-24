@@ -11,6 +11,7 @@ const ffmpeg = path.join(native, "ffmpeg-shared.exe");
 const photo = path.join(validation, "photo 한글.png");
 const video = path.join(validation, "video.mp4");
 const audio = path.join(validation, "music.wav");
+const narration = path.join(validation, "narration.wav");
 const output = path.join(validation, "donqui-final.mp4");
 
 function fixture(args) {
@@ -76,6 +77,7 @@ async function launch() {
 		video,
 	]);
 	fixture(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "8", audio]);
+	fixture(["-f", "lavfi", "-i", "sine=frequency=660:sample_rate=44100", "-t", "3", narration]);
 	let app = await launch();
 	let page;
 	try {
@@ -109,18 +111,88 @@ async function launch() {
 			},
 			{ photo, video, audio, output },
 		);
+		// Audio: the music becomes a layer, is trimmed to 5 s at 80%, previewed, then mixed into
+		// the one track the programme plays.
 		await page.getByRole("button", { name: "음악 가져오기", exact: true }).click();
-		await savedDocument((doc) => doc.audioTracks.length === 1);
-		await page.getByLabel("원본 종료 (초)", { exact: true }).fill("5");
-		await page.getByRole("button", { name: "설정 적용", exact: true }).click();
+		await savedDocument((doc) => doc.audioBoard?.layers?.length === 1);
+		const outPoint = page.getByLabel("원본 끝 (초)", { exact: true });
+		await outPoint.fill("5");
+		await outPoint.press("Enter");
+		const volume = page.getByLabel("볼륨 (%)", { exact: true });
+		await volume.fill("80");
+		await volume.press("Enter");
 		await savedDocument(
-			(doc) => doc.audioTracks[0]?.endMs === 5000 && doc.audioTracks[0]?.timelineLocked,
+			(doc) => doc.audioBoard.layers[0].outSec === 5 && doc.audioBoard.layers[0].volume === 80,
 		);
-		console.log("PASS Audio first: 8s music imported and trimmed to 5s before any visual clip");
-		await page.getByRole("button", { name: "오디오 전체 미리보기", exact: true }).click();
+		// A mono narration on a second layer, from 1 s.
+		await app.evaluate(({ dialog }, file) => {
+			const earlier = dialog.showOpenDialog;
+			dialog.showOpenDialog = async (options) =>
+				options.filters?.[0]?.extensions?.includes("mp3")
+					? { canceled: false, filePaths: [file] }
+					: earlier(options);
+		}, narration);
+		await page.getByRole("button", { name: "나레이션 가져오기", exact: true }).click();
+		await savedDocument((doc) => doc.audioBoard?.layers?.length === 2);
+		const narrationStart = page.getByLabel("타임라인 시작 (초)", { exact: true });
+		await narrationStart.fill("1");
+		await narrationStart.press("Enter");
+		await savedDocument((doc) => doc.audioBoard.layers[1].startSec === 1);
+		assert.equal((await savedDocument(() => true)).audioTracks.length, 0);
+		await page.getByRole("button", { name: "미리듣기", exact: true }).click();
 		await page.waitForTimeout(350);
 		await page.getByRole("button", { name: "일시 정지", exact: true }).click();
+		await page.getByRole("button", { name: "Media에 반영", exact: true }).click();
+		let doc = await savedDocument(
+			(value) =>
+				value.audioTracks.length === 1 &&
+				value.audioTracks[0].endMs === 5000 &&
+				value.audioTracks[0].timelineLocked &&
+				value.audioBoard?.mix?.assetId === value.audioTracks[0].assetId,
+		);
+		const mixFile = doc.assets.find(
+			(asset) => asset.id === doc.audioBoard.mix.assetId,
+		).originalPath;
+		assert(/[\\/]audio-mixes[\\/]/.test(mixFile), `mix not written by the mixer: ${mixFile}`);
+		const mixProbe = JSON.parse(
+			spawnSync(
+				path.join(root, "node_modules/@remotion/compositor-win32-x64-msvc/ffprobe.exe"),
+				["-v", "error", "-show_streams", "-show_format", "-of", "json", mixFile],
+				{ windowsHide: true, encoding: "utf8" },
+			).stdout,
+		);
+		assert(Math.abs(Number(mixProbe.format.duration) - 5) < 0.01, "the mix is not 5 s long");
+		assert.equal(mixProbe.streams[0].channels, 2);
+		// Both sines are -18 dBFS mono files. The music alone at 80% is -20 dB on each side — a mono
+		// file spread at full level — and the narration raises the peak only from 1 s to 4 s.
+		const peakDb = (from, to) =>
+			Number(
+				/max_volume: (-?[\d.]+) dB/.exec(
+					spawnSync(
+						ffmpeg,
+						[
+							"-hide_banner",
+							"-nostats",
+							"-i",
+							mixFile,
+							"-af",
+							`atrim=${from}:${to},volumedetect`,
+							"-f",
+							"null",
+							"-",
+						],
+						{ windowsHide: true, encoding: "utf8" },
+					).stderr,
+				)?.[1],
+			);
+		const peaks = [peakDb(0.2, 0.8), peakDb(1.5, 3.5), peakDb(4.2, 4.8)];
+		assert(Math.abs(peaks[0] + 20) < 0.6 && Math.abs(peaks[2] + 20) < 0.6, `music peaks ${peaks}`);
+		assert(peaks[1] > peaks[0] + 4, `the narration is missing from 1-4 s: ${peaks}`);
+		await page.getByText(/Media에 반영됨/).waitFor();
 		await page.screenshot({ path: path.join(validation, "audio.png") });
+		console.log(
+			`PASS Audio first: 8s music (trimmed to 5s, 80%) and a mono narration from 1s as layers, previewed and mixed into one ${Number(mixProbe.format.duration).toFixed(3)}s stereo track; peaks ${peaks.map((peak) => peak.toFixed(1)).join(" / ")} dB`,
+		);
 		// V.Clip: split a range of the video. Only the range is recorded; nothing renders here.
 		await page.getByRole("tab", { name: "V.Clip", exact: true }).click();
 		await page.getByRole("button", { name: "영상 가져오기", exact: true }).first().click();
@@ -140,7 +212,7 @@ async function launch() {
 			.getByRole("button", { name: /선택한 구간 1개 클립으로 나누기/ })
 			.first()
 			.click();
-		let doc = await savedDocument((value) => value.mediaBoard?.clips?.length === 1);
+		doc = await savedDocument((value) => value.mediaBoard?.clips?.length === 1);
 		assert.deepEqual([doc.mediaBoard.clips[0].startSec, doc.mediaBoard.clips[0].endSec], [0, 3.5]);
 		assert.equal(doc.timeline.clips.length, 0);
 		console.log("PASS V.Clip: a 3.5 s range split into Media's bin, nothing rendered or placed");

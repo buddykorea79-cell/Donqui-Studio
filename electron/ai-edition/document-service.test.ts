@@ -477,6 +477,42 @@ describe("DocumentService", () => {
 			expect((await service.getProject(after.project.id)).mediaBoard).toEqual(after.mediaBoard);
 		});
 
+		it("takes the removed audio's layers off the audio board, and its mix off the applied one", async () => {
+			const doc = await service.createProject("P");
+			const song = await service.addAsset(doc.project.id, { path: "/tmp/song.mp3", kind: "audio" });
+			const both = await service.addAsset(doc.project.id, { path: "/tmp/mix.wav", kind: "audio" });
+			const [songAsset, mixAsset] = both.assets;
+			const layer = (id: string, assetId: string) => ({
+				id,
+				assetId,
+				kind: "music" as const,
+				label: id,
+				startSec: 0,
+				inSec: 0,
+				outSec: 5,
+				volume: 100,
+				fadeInSec: 0,
+				fadeOutSec: 0,
+				muted: false,
+			});
+			const withBoard = await service.saveProject({
+				...both,
+				audioBoard: {
+					layers: [layer("l1", songAsset.id), layer("l2", "other")],
+					mix: { assetId: mixAsset.id, signature: "s" },
+				},
+			});
+			expect(song.assets).toHaveLength(1);
+			const withoutSong = await service.removeAsset(withBoard.project.id, songAsset.id);
+			expect(withoutSong.audioBoard?.layers.map((entry) => entry.id)).toEqual(["l2"]);
+			expect(withoutSong.audioBoard?.mix).toEqual({ assetId: mixAsset.id, signature: "s" });
+			const withoutMix = await service.removeAsset(withBoard.project.id, mixAsset.id);
+			expect(withoutMix.audioBoard?.mix).toBeUndefined();
+			expect((await service.getProject(withoutMix.project.id)).audioBoard).toEqual({
+				layers: [layer("l2", "other")],
+			});
+		});
+
 		it("reassigns primaryAssetId when removing the primary", async () => {
 			const doc = await service.createProject("P");
 			const a = await service.addAsset(doc.project.id, { path: "/tmp/a.mp4" });

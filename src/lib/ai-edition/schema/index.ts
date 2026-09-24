@@ -643,6 +643,38 @@ export const mediaBoardSchema = z.object({
 	items: z.array(mediaBoardItemSchema).default([]),
 });
 
+// Donqui Studio's audio board: the Audio tab's LAYERS — music and narration files, each placed,
+// trimmed and set in volume on its own row — and the MIX of them last applied, which is the one
+// audio track the programme plays. Optional and additive, like the media board.
+export const audioBoardLayerSchema = endGteStart(
+	z.object({
+		id: z.string().min(1),
+		assetId: z.string().min(1),
+		kind: z.enum(["voiceover", "music"]).default("music"),
+		label: z.string().default(""),
+		/** Where the layer starts in the mix, in seconds. */
+		startSec: z.number().nonnegative(),
+		/** The stretch of the file it plays, in source seconds. */
+		inSec: z.number().nonnegative(),
+		outSec: z.number().nonnegative(),
+		/** Volume in percent of the file's own level: 100 leaves it as it is. */
+		volume: z.number().min(0).max(400).default(100),
+		fadeInSec: z.number().nonnegative().default(0),
+		fadeOutSec: z.number().nonnegative().default(0),
+		muted: z.boolean().default(false),
+		/** The programme audio track this layer was taken from, so it is taken only once. */
+		trackId: z.string().min(1).optional(),
+	}),
+	"outSec",
+	"inSec",
+);
+
+export const audioBoardSchema = z.object({
+	layers: z.array(audioBoardLayerSchema).default([]),
+	/** The mix last applied: its file's asset, and what it was made from, to tell a change since. */
+	mix: z.object({ assetId: z.string().min(1), signature: z.string() }).optional(),
+});
+
 const documentSchemaShape = z.object({
 	schemaVersion: z.literal(axcutSchemaVersion),
 	project: z.object({
@@ -670,6 +702,7 @@ const documentSchemaShape = z.object({
 	audioTracks: z.array(audioTrackSchema).default([]),
 	legacyEditor: legacyEditorSchema.nullable().default(null),
 	mediaBoard: mediaBoardSchema.optional(),
+	audioBoard: audioBoardSchema.optional(),
 });
 
 // P4 — v3 documents carried a single project-level `cameraTrack` (one project
@@ -1153,6 +1186,8 @@ export type AxcutMediaBoard = z.infer<typeof mediaBoardSchema>;
 export type AxcutMediaBoardClip = z.infer<typeof mediaBoardClipSchema>;
 export type AxcutMediaBoardImage = z.infer<typeof mediaBoardImageSchema>;
 export type AxcutMediaBoardItem = z.infer<typeof mediaBoardItemSchema>;
+export type AxcutAudioBoard = z.infer<typeof audioBoardSchema>;
+export type AxcutAudioBoardLayer = z.infer<typeof audioBoardLayerSchema>;
 export type AxcutDocument = z.infer<typeof documentSchema>;
 export type AxcutDocumentInput = z.input<typeof documentSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;

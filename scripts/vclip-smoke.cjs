@@ -129,9 +129,17 @@ function footageShownTwice(before, after) {
 			},
 			{ audio, sources, photo: photo ?? null },
 		);
+		// The music is a layer until it is mixed into the one track Media fits to.
 		await page.getByRole("button", { name: "음악 가져오기", exact: true }).click();
-		await savedDocument((doc) => doc.audioTracks.length === 1);
-		log(`PASS Audio: ${MUSIC_SEC} s music bed imported`);
+		await savedDocument((doc) => doc.audioBoard?.layers?.length === 1);
+		await page.getByRole("button", { name: "Media에 반영", exact: true }).click();
+		await savedDocument(
+			(doc) =>
+				doc.audioTracks.length === 1 &&
+				doc.audioTracks[0].endMs === MUSIC_SEC * 1000 &&
+				doc.audioBoard.mix?.assetId === doc.audioTracks[0].assetId,
+		);
+		log(`PASS Audio: ${MUSIC_SEC} s music bed imported as a layer and mixed into Media's audio`);
 
 		// V.Clip: every video on one page.
 		await page.getByRole("button", { name: /V\.Clip으로 이동/ }).click();

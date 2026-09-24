@@ -64,6 +64,7 @@ import { isDiagnosticModeEnabled, mainLogBuffer } from "../diagnostics/main-log-
 import { mainT } from "../i18n";
 import { getInstallChannel } from "../install-channel";
 import { RECORDINGS_DIR } from "../main";
+import { createAudioMix, validateMixRequest } from "../media/audioMix";
 import { type AudioPeaksResult, getAudioPeaks } from "../media/audioPeaks";
 import { createClipEffect } from "../media/clipEffects";
 import {
@@ -4144,6 +4145,63 @@ export function registerIpcHandlers(
 		}
 	});
 	// A photo as a still video of `duration` seconds — Media's photo item with no effect.
+	// Audio: several music or narration files at once, each becoming a layer.
+	ipcMain.handle("open-audio-files-picker", async () => {
+		try {
+			const result = await dialog.showOpenDialog(
+				buildDialogOptions(
+					{
+						title: mainT("dialogs", "fileDialogs.selectAudio"),
+						defaultPath: RECORDINGS_DIR,
+						filters: [
+							{
+								name: mainT("dialogs", "fileDialogs.audioFiles"),
+								extensions: ["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus"],
+							},
+						],
+						properties: ["openFile", "multiSelections"],
+					},
+					getMainWindow(),
+				),
+			);
+			if (result.canceled || result.filePaths.length === 0)
+				return { success: false, canceled: true, files: [], rejected: [] };
+			const files: Array<{ path: string; name: string }> = [];
+			const rejected: string[] = [];
+			for (const filePath of result.filePaths) {
+				const approved = await approveReadableAudioPath(filePath);
+				if (approved) files.push({ path: approved, name: path.basename(approved) });
+				else rejected.push(path.basename(filePath));
+			}
+			return { success: files.length > 0, files, rejected };
+		} catch (error) {
+			return {
+				success: false,
+				files: [],
+				rejected: [],
+				message: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
+	// The Audio tab's layers mixed into one WAV, which the programme then plays alone.
+	ipcMain.handle("create-audio-mix", async (_event, request: unknown) => {
+		try {
+			const checked = validateMixRequest(request);
+			const layers = checked.layers.map((layer) => {
+				const approved = readableApprovedPath(layer.path);
+				if (!approved) throw new Error(`Import this audio again: ${path.basename(layer.path)}`);
+				return { ...layer, path: approved };
+			});
+			const result = await createAudioMix(
+				{ ...checked, layers },
+				path.join(app.getPath("userData"), "media", "audio-mixes"),
+			);
+			approveFilePath(result.filePath);
+			return { success: true, ...result };
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) };
+		}
+	});
 	ipcMain.handle("create-image-clip", async (_event, imagePath: string, duration: number) => {
 		try {
 			const approved = resolveApprovedImagePath(imagePath);

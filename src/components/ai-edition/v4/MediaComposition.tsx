@@ -23,6 +23,7 @@ import type {
 } from "@/lib/ai-edition/schema";
 import { useProjectStore } from "@/lib/ai-edition/store/projectStore";
 import { formatSec, formatSeconds } from "@/lib/ai-edition/timeline/format";
+import { audioBoardOf, isAudible, mixStatus, playsBoardMix } from "@/lib/audio-board/board";
 import { audioFitSummary } from "@/lib/clip-effects/audioFit";
 import { CLIP_EFFECTS, type ClipEffectSelection } from "@/lib/clip-effects/catalog";
 import { clipEffectLabel, itemNeedsRender } from "@/lib/media-board/apply";
@@ -370,14 +371,32 @@ function AudioFit({
 			0,
 			...tracks.filter((track) => track.kind === kind).map((track) => track.endMs / 1000),
 		);
-	const music = endOf("music");
-	const narration = endOf("voiceover");
+	// The Audio tab's mix is one track; what it was made of is on the board.
+	const mixed = playsBoardMix(document);
+	const layers = mixed ? audioBoardOf(document).layers.filter(isAudible) : [];
+	const countOf = (kind: "music" | "voiceover") =>
+		layers.filter((layer) => layer.kind === kind).length;
+	const breakdown = mixed
+		? [
+				" · 오디오 믹스",
+				countOf("music") > 0 ? ` · 음악 ${countOf("music")}개` : "",
+				countOf("voiceover") > 0 ? ` · 나레이션 ${countOf("voiceover")}개` : "",
+			].join("")
+		: [
+				endOf("music") > 0 ? ` · 음악 ${formatSeconds(endOf("music"))}` : "",
+				endOf("voiceover") > 0 ? ` · 나레이션 ${formatSeconds(endOf("voiceover"))}` : "",
+			].join("");
+	const narration = mixed ? countOf("voiceover") : endOf("voiceover");
+	const status = mixStatus(document);
+	const pending = status === "unapplied" || status === "changed";
 	const difference = audioSec - totalSec;
 	if (audioSec <= 0)
 		return (
 			<p className={styles.fitNote}>
 				<AudioLines size={14} />
-				Audio 탭에 음악이나 나레이션을 넣으면 조합을 그 길이에 맞출 수 있습니다.
+				{pending
+					? "Audio 탭에서 ‘Media에 반영’을 누르면 조합을 그 오디오 길이에 맞출 수 있습니다."
+					: "Audio 탭에 음악이나 나레이션을 넣으면 조합을 그 길이에 맞출 수 있습니다."}
 			</p>
 		);
 	const span = Math.max(audioSec, totalSec, 0.001);
@@ -388,8 +407,7 @@ function AudioFit({
 				<AudioLines size={14} />
 				<span>
 					Audio <strong>{formatSeconds(audioSec)}</strong>
-					{music > 0 ? ` · 음악 ${formatSeconds(music)}` : ""}
-					{narration > 0 ? ` · 나레이션 ${formatSeconds(narration)}` : ""}
+					{breakdown}
 				</span>
 				<span>
 					조합 <strong>{formatSeconds(totalSec)}</strong>
@@ -402,6 +420,12 @@ function AudioFit({
 							: `${formatSeconds(-difference)} 넘침`}
 				</span>
 			</p>
+			{pending ? (
+				<p className={styles.fitPending} role="status">
+					Audio 탭에서 바꾼 오디오가 아직 반영되지 않았습니다. Audio 탭에서 ‘Media에 반영’을
+					누르세요.
+				</p>
+			) : null}
 			<div className={styles.fitBar} aria-hidden>
 				<div className={styles.fitLane}>
 					{items.map((item, index) => {
