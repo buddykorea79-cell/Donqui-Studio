@@ -6,7 +6,7 @@ OpenScreen을 기반으로 만든 음악·나레이션 중심의 사진·영상 
 
 ## 실행
 
-의존성(`npm ci`)과 Windows 네이티브 구성요소를 준비한 뒤 이 폴더의 `start-donqui.cmd`를 더블클릭합니다. 소스가 마지막 빌드보다 새로우면 먼저 `npm run build-vite`로 다시 빌드하고 실행하므로, 코드를 고친 뒤에도 따로 빌드하지 않아도 됩니다. 기존 `start-mangopang.cmd` 바로가기도 새 실행기로 연결됩니다. 네이티브 구성요소의 준비 방법은 [AGENTS.md](AGENTS.md)를 확인하세요.
+의존성(`npm ci`)과 Windows 네이티브 구성요소를 준비한 뒤 이 폴더의 `start-donqui.cmd`를 더블클릭합니다. 소스가 마지막 빌드보다 새로우면 먼저 `npm run build-vite`로 다시 빌드하고 실행하므로, 코드를 고친 뒤에도 따로 빌드하지 않아도 됩니다. 네이티브 구성요소의 준비 방법은 [AGENTS.md](AGENTS.md)를 확인하세요.
 
 개발 모드는 Node 22.22.1 / npm 10.9.4에서 `npm run dev`로 시작합니다.
 
