@@ -72,7 +72,7 @@ import {
 	readCursorSidecar,
 	readCursorTelemetryFile as readCursorTelemetryFileFrom,
 } from "../media/cursorSidecar";
-import { createImageClip, IMAGE_EXTENSIONS } from "../media/imageClip";
+import { createImageClip, IMAGE_EXTENSIONS, validateImageClipFrame } from "../media/imageClip";
 import { findMediaLinksByFingerprint, registerMediaLinks } from "../media/mediaLinksRegistry";
 import { listVisionModels, resolveOllamaBaseUrl } from "../media/ollamaVision";
 import { relinkProjectMedia } from "../media/projectMediaRelinker";
@@ -4202,28 +4202,32 @@ export function registerIpcHandlers(
 			return { success: false, error: error instanceof Error ? error.message : String(error) };
 		}
 	});
-	ipcMain.handle("create-image-clip", async (_event, imagePath: string, duration: number) => {
-		try {
-			const approved = resolveApprovedImagePath(imagePath);
-			if (!approved) throw new Error("Choose an imported photo first");
-			const output = await createImageClip(
-				approved,
-				duration,
-				path.join(app.getPath("userData"), "media", "image-clips"),
-			);
-			approveFilePath(output);
-			const probe = await probeVideo(output).catch(() => null);
-			return {
-				success: true,
-				filePath: output,
-				durationMs: Math.round((probe?.durationSec ?? duration) * 1000),
-				width: probe?.width,
-				height: probe?.height,
-			};
-		} catch (error) {
-			return { success: false, error: error instanceof Error ? error.message : String(error) };
-		}
-	});
+	ipcMain.handle(
+		"create-image-clip",
+		async (_event, imagePath: string, duration: number, frame?: unknown) => {
+			try {
+				const approved = resolveApprovedImagePath(imagePath);
+				if (!approved) throw new Error("Choose an imported photo first");
+				const output = await createImageClip(
+					approved,
+					duration,
+					path.join(app.getPath("userData"), "media", "image-clips"),
+					validateImageClipFrame(frame),
+				);
+				approveFilePath(output);
+				const probe = await probeVideo(output).catch(() => null);
+				return {
+					success: true,
+					filePath: output,
+					durationMs: Math.round((probe?.durationSec ?? duration) * 1000),
+					width: probe?.width,
+					height: probe?.height,
+				};
+			} catch (error) {
+				return { success: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+	);
 	ipcMain.handle("open-image-clip-picker", async (_event, duration: number) => {
 		try {
 			if (!Number.isFinite(duration) || duration < 0.5 || duration > 600)

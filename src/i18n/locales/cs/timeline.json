@@ -104,5 +104,11 @@
 		"recordingUnavailable": "Nahrávání zde není dostupné",
 		"saveFailed": "Nepodařilo se uložit nahrávku",
 		"importFailed": "Nepodařilo se importovat zvukový soubor"
+	},
+	"zoomControls": {
+		"zoomIn": "Přiblížit časovou osu",
+		"zoomOut": "Oddálit časovou osu",
+		"fit": "Zobrazit celou časovou osu",
+		"level": "Přiblížení časové osy"
 	}
 }

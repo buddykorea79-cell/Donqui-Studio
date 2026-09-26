@@ -11,13 +11,18 @@ import {
 } from "@/lib/ai-edition/document/audioTracks";
 import { createId } from "@/lib/ai-edition/document/ids";
 import {
-	addManualSubtitle,
-	type ManualSubtitleInput,
-} from "@/lib/ai-edition/document/manualSubtitle";
-import {
 	migrateProjectDataToAxcutDocument,
 	migrateRawDocumentToCurrent,
 } from "@/lib/ai-edition/document/migrate";
+import {
+	addSubtitles,
+	getSubtitleStyles,
+	type SubtitleEntry,
+	type SubtitleKind,
+	setSubtitleText,
+	subtitleEntries,
+	subtitleKindOf,
+} from "@/lib/ai-edition/document/subtitles";
 import {
 	documentAfterProbedDuration,
 	PLACEHOLDER_DURATION_SEC,
@@ -37,6 +42,7 @@ import {
 	type AxcutDocument,
 	documentSchema,
 } from "@/lib/ai-edition/schema";
+import { projectOutputFrame, withOutputDefaults } from "@/lib/ai-edition/store/outputSettings";
 import { saveWithDeadline, useProjectStore } from "@/lib/ai-edition/store/projectStore";
 import {
 	useAssetTranscriptions,
@@ -50,6 +56,7 @@ import { useSequentialTimelineOps } from "@/lib/ai-edition/store/useSequentialTi
 import { useTimeline } from "@/lib/ai-edition/store/useTimeline";
 import { isGeneratedAssetId } from "@/lib/ai-edition/timeline/clip-parts";
 import { newRegionDurationSec } from "@/lib/ai-edition/timeline/newRegionDuration";
+import { coalesceRegionsForRuler } from "@/lib/ai-edition/timeline/timelineMap";
 import {
 	dropTrimPillsByIds,
 	ventilateTimelineSpanToTrims,
@@ -82,6 +89,7 @@ import { type EditorMode, EditorTopBar } from "./v4/EditorTopBar";
 import { type Facet, FloatingInspector } from "./v4/FloatingInspector";
 import { MediaStage } from "./v4/MediaStage";
 import { RecStage } from "./v4/RecStage";
+import { type SubtitleDraft, SubtitleQuickBar } from "./v4/SubtitleTools";
 import { V4Timeline } from "./v4/V4Timeline";
 import { VClipStage } from "./v4/VClipStage";
 
@@ -564,21 +572,6 @@ export function NewEditorShell() {
 	// The append index is read INSIDE the chain for the same reason the doc is: off the
 	// closure, `clips.length` stays frozen at the last render, so the second add lands
 	// before the first instead of after it.
-	const handleAddSubtitle = useCallback(
-		(input: ManualSubtitleInput) => {
-			const projectId = useProjectStore.getState().projectId;
-			return enqueueTimelineWrite(async () => {
-				const state = useProjectStore.getState();
-				if (!state.document || state.projectId !== projectId)
-					throw new Error("프로젝트가 변경되었습니다.");
-				if (
-					!(await state.saveDocument(addManualSubtitle(state.document, input), { history: true }))
-				)
-					throw new Error("자막을 저장하지 못했습니다.");
-			});
-		},
-		[enqueueTimelineWrite],
-	);
 	const handleDropAsset = useCallback(
 		(assetId: string) =>
 			enqueueTimelineWrite(() => {
@@ -903,7 +896,11 @@ export function NewEditorShell() {
 		async (title: string, startingPoint: StartingPoint) => {
 			try {
 				initialModeChosen.current = true;
-				await createProject(title);
+				const created = await createProject(title);
+				// A new project starts from the frame, resolution and framing chosen last in
+				// Settings. Not an edit the user made here, so not an undo step either.
+				const withDefaults = withOutputDefaults(created);
+				if (withDefaults !== created) await saveDocument(withDefaults, { history: false });
 				setMode(startingPoint === "screen-recording" ? "rec" : "audio");
 			} catch (err) {
 				toast.error("Could not create project", {
@@ -911,7 +908,7 @@ export function NewEditorShell() {
 				});
 			}
 		},
-		[createProject],
+		[createProject, saveDocument],
 	);
 
 	// The only way to get rid of a project short of deleting its file by hand.
@@ -1050,6 +1047,143 @@ export function NewEditorShell() {
 			// Swallowed: see above.
 		});
 	}, []);
+
+	// Subtitles typed in Edit: the quick bar's draft, opened by N / Shift+N at the playhead or by
+	// Enter / F2 on a selected one, and put in through the shared write queue.
+	const [subtitleDraft, setSubtitleDraft] = useState<SubtitleDraft | null>(null);
+	useEffect(() => {
+		if (mode !== "edit") setSubtitleDraft(null);
+	}, [mode]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a draft belongs to the project it was opened in
+	useEffect(() => {
+		setSubtitleDraft(null);
+	}, [projectId]);
+
+	const openSubtitleDraft = useCallback(
+		(kind: SubtitleKind) => {
+			const state = useProjectStore.getState();
+			if (!state.document?.timeline.clips.length) {
+				toast.error("자막을 넣을 영상을 먼저 타임라인에 놓으세요.");
+				return;
+			}
+			// Typing over a moving picture is guesswork: the picture holds still while the bar is up.
+			videoElement?.pause();
+			setSubtitleDraft({ kind, startSec: state.currentTimeSec, text: "" });
+		},
+		[videoElement],
+	);
+
+	const editSubtitleDraft = useCallback(
+		(id: string) => {
+			const doc = useProjectStore.getState().document;
+			if (!doc) return;
+			const pill = coalesceRegionsForRuler(doc.annotations).find((entry) => entry.ids.includes(id));
+			if (!pill || pill.member.type !== "text") return;
+			videoElement?.pause();
+			setSubtitleDraft({
+				kind: subtitleKindOf(pill.member),
+				startSec: pill.start,
+				text: pill.member.content || pill.member.textContent || "",
+				editId: pill.ids[0],
+			});
+		},
+		[videoElement],
+	);
+
+	const commitSubtitleDraft = useCallback(
+		async (next: boolean) => {
+			const draft = subtitleDraft;
+			if (!draft || !draft.text.trim()) return;
+			const projectAtStart = useProjectStore.getState().projectId;
+			let placed: SubtitleEntry | null = null;
+			try {
+				await enqueueTimelineWrite(async () => {
+					const state = useProjectStore.getState();
+					if (!state.document || state.projectId !== projectAtStart)
+						throw new Error("프로젝트가 변경되었습니다.");
+					if (draft.editId) {
+						const edited = setSubtitleText(state.document, draft.editId, draft.text);
+						if (!(await state.saveDocument(edited, { history: true })))
+							throw new Error("자막을 저장하지 못했습니다.");
+						return;
+					}
+					const frame = projectOutputFrame(state.document);
+					const length = getSubtitleStyles(state.document)[draft.kind].durationSec;
+					const result = addSubtitles(
+						state.document,
+						[
+							{
+								kind: draft.kind,
+								text: draft.text,
+								startSec: draft.startSec,
+								endSec: draft.startSec + length,
+							},
+						],
+						frame.width / frame.height,
+					);
+					if (!(await state.saveDocument(result.document, { history: true })))
+						throw new Error("자막을 저장하지 못했습니다.");
+					placed =
+						subtitleEntries(result.document).find((entry) => entry.ids.includes(result.ids[0])) ??
+						null;
+				});
+			} catch (error) {
+				toast.error(error instanceof Error ? error.message : String(error));
+				return;
+			}
+			const done = placed as SubtitleEntry | null;
+			const end = Math.max(
+				0,
+				...(useProjectStore.getState().document?.timeline.clips ?? []).map((c) => c.timelineEndSec),
+			);
+			if (next && done && done.endSec < end - 0.1) {
+				// On to the next one, where this one ends: type, Ctrl+Enter, type, Ctrl+Enter…
+				setSubtitleDraft({ kind: draft.kind, startSec: done.endSec, text: "" });
+				handleSeek(done.endSec);
+				return;
+			}
+			setSubtitleDraft(null);
+			if (done) tl.selectRegion("annotation", done.ids[0]);
+			else if (draft.editId) tl.selectRegion("annotation", draft.editId);
+		},
+		[subtitleDraft, enqueueTimelineWrite, handleSeek, tl],
+	);
+
+	/** `[` / `]`: the selected text's start or end, moved to the playhead. */
+	const moveSubtitleEdge = useCallback(
+		(id: string, edge: "start" | "end") => {
+			const doc = useProjectStore.getState().document;
+			if (!doc) return;
+			const pill = coalesceRegionsForRuler(doc.annotations).find((entry) => entry.ids.includes(id));
+			if (!pill) return;
+			const at = useProjectStore.getState().currentTimeSec;
+			const start = edge === "start" ? at : pill.start;
+			const end = edge === "end" ? at : pill.end;
+			if (end - start < 0.1) {
+				toast.error(
+					edge === "start"
+						? "시작은 자막이 끝나기 전이어야 합니다."
+						: "끝은 자막이 시작한 뒤여야 합니다.",
+				);
+				return;
+			}
+			void tl.updateAnnotationSpan(id, Math.round(start * 1000), Math.round(end * 1000));
+		},
+		[tl],
+	);
+
+	const subtitleActions = useMemo(
+		() => ({
+			add: openSubtitleDraft,
+			edit: editSubtitleDraft,
+			reveal: (entry: SubtitleEntry) => {
+				handleSeek(entry.startSec + 0.001);
+				tl.selectRegion("annotation", entry.ids[0]);
+			},
+			remove: (entry: SubtitleEntry) => void tl.removeRegion("annotation", entry.ids[0]),
+		}),
+		[openSubtitleDraft, editSubtitleDraft, handleSeek, tl],
+	);
 
 	// Voiceover recording (the one audio gesture that is not a file import). The
 	// dialog owns the mic; the shell owns the transport and the placement.
@@ -1321,6 +1455,45 @@ export function NewEditorShell() {
 				openShortcutsConfig();
 				return;
 			}
+			// Everything below edits Edit's timeline. Audio and Media have timelines of their own,
+			// with their own keys; left on, Delete there removed whatever was last selected in Edit
+			// and Z dropped a zoom onto a timeline that is not even on screen. Audio's preview is
+			// the one thing the shell still plays for another tab.
+			if (mode !== "edit") {
+				if (mode === "audio" && matchesShortcut(e, shortcuts.playPause, isMac)) {
+					e.preventDefault();
+					togglePlay();
+				}
+				return;
+			}
+
+			if (matchesShortcut(e, shortcuts.addSubtitle, isMac)) {
+				e.preventDefault();
+				openSubtitleDraft("caption");
+				return;
+			}
+			if (matchesShortcut(e, shortcuts.addTitle, isMac)) {
+				e.preventDefault();
+				openSubtitleDraft("title");
+				return;
+			}
+			const selectedText = tl.selection?.kind === "annotation" ? tl.selection.id : null;
+			if (
+				selectedText &&
+				(e.key === "Enter" || e.key === "F2") &&
+				!ctrl &&
+				!(e.target instanceof HTMLButtonElement) &&
+				!(e.target instanceof HTMLSelectElement)
+			) {
+				e.preventDefault();
+				editSubtitleDraft(selectedText);
+				return;
+			}
+			if (selectedText && !ctrl && (e.key === "[" || e.key === "]")) {
+				e.preventDefault();
+				moveSubtitleEdge(selectedText, e.key === "[" ? "start" : "end");
+				return;
+			}
 
 			const deleteSelection = () => {
 				// F2.7 — a shift-click multi-selection deletes as one batch (one
@@ -1489,6 +1662,10 @@ export function NewEditorShell() {
 		isMac,
 		togglePlay,
 		handleSeek,
+		mode,
+		openSubtitleDraft,
+		editSubtitleDraft,
+		moveSubtitleEdge,
 	]);
 
 	const changeMode = (next: EditorMode) => {
@@ -1513,11 +1690,10 @@ export function NewEditorShell() {
 		}
 		setMode(next);
 	};
-	// V.Clip only splits footage into Media's bin; nothing it does lands on the timeline.
-	const showTimeline = mode !== "rec" && mode !== "audio" && mode !== "vclip";
-	// Media adds clips rather than edits them: a short strip shows them landing.
-	const compactTimeline = mode === "media";
-	const timelineRow = compactTimeline ? "188px" : `${timelineHeightPx}px`;
+	// Edit's timeline is Edit's alone. V.Clip only splits footage into Media's bin, and Audio and
+	// Media dock timelines of their own — the soundtrack's clips, and the pictures laid under it.
+	const showTimeline = mode === "edit";
+	const timelineRow = `${timelineHeightPx}px`;
 	const bodyColumns = mode === "edit" && chatOpen ? `${chatWidthPx}px 1fr` : "1fr";
 
 	// Drag the chat/stage divider (col-resize) or the timeline's top edge
@@ -1619,6 +1795,7 @@ export function NewEditorShell() {
 					openSettings: handleOpenSettings,
 					renameProject: handleRenameProject,
 					toggleChat: () => setChatOpen((v) => !v),
+					openProjectSettings: () => openDialog("project"),
 					openProviderSettings: () => openDialog("providers"),
 					showAbout: handleShowAbout,
 					checkForUpdates: handleCheckForUpdates,
@@ -1721,8 +1898,23 @@ export function NewEditorShell() {
 									playing={playing}
 								/>
 							</div>
+							{subtitleDraft ? (
+								<SubtitleQuickBar
+									draft={subtitleDraft}
+									durationSec={getSubtitleStyles(document)[subtitleDraft.kind].durationSec}
+									rightInsetPx={inspectorOpen ? 400 : 74}
+									onText={(text) =>
+										setSubtitleDraft((current) => (current ? { ...current, text } : current))
+									}
+									onKind={(kind) =>
+										setSubtitleDraft((current) => (current ? { ...current, kind } : current))
+									}
+									onCommit={(next) => void commitSubtitleDraft(next)}
+									onClose={() => setSubtitleDraft(null)}
+								/>
+							) : null}
 							<FloatingInspector
-								onAddSubtitle={handleAddSubtitle}
+								subtitleActions={subtitleActions}
 								facet={facet}
 								open={inspectorOpen}
 								tl={tl}
@@ -1738,9 +1930,7 @@ export function NewEditorShell() {
 						</>
 					) : mode === "audio" ? (
 						<AudioStage
-							onContinue={() => {
-								changeMode("vclip");
-							}}
+							onApplied={() => changeMode("media")}
 							onNewProject={() => setNewProjectOpen(true)}
 						/>
 					) : mode === "vclip" ? (
@@ -1776,19 +1966,17 @@ export function NewEditorShell() {
 						borderTop: "1px solid var(--border)",
 					}}
 				>
-					{!compactTimeline ? (
-						<div
-							className={v4.timelineResizeHandle}
-							role="separator"
-							aria-orientation="horizontal"
-							aria-label={te("shell.resizeTimeline")}
-							onPointerDown={startTimelineResize}
-						/>
-					) : null}
+					<div
+						className={v4.timelineResizeHandle}
+						role="separator"
+						aria-orientation="horizontal"
+						aria-label={te("shell.resizeTimeline")}
+						onPointerDown={startTimelineResize}
+					/>
 					<V4Timeline
 						tl={tl}
 						setCurrentTime={handleSeek}
-						variant={compactTimeline ? "media" : "edit"}
+						variant="edit"
 						onDropAsset={handleDropAsset}
 						videoSources={videoSources}
 						playing={playing}

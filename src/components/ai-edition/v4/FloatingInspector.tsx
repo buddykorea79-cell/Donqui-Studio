@@ -1,6 +1,7 @@
 import {
 	AudioLines,
 	Camera,
+	Captions,
 	ChevronRight,
 	FileText,
 	Maximize2,
@@ -36,7 +37,6 @@ import {
 	type AnnotationTextAnimation,
 	TEXT_ANIMATION_VALUES,
 } from "@/lib/ai-edition/annotations/textAnimation";
-import type { ManualSubtitleInput } from "@/lib/ai-edition/document/manualSubtitle";
 import type { AxcutAnnotationRegion, AxcutClip } from "@/lib/ai-edition/schema";
 import { rafCoalesce } from "@/lib/ai-edition/store/rafCoalesce";
 import { useEditorSettings } from "@/lib/ai-edition/store/useEditorSettings";
@@ -55,7 +55,7 @@ import {
 	VideoEffectsPane,
 } from "../RightPanes";
 import styles from "./EditorShellV4.module.css";
-import { ManualSubtitlePane } from "./ManualSubtitlePane";
+import { type SubtitleActions, SubtitlePane } from "./SubtitleTools";
 
 type TimelineApi = ReturnType<typeof useTimeline>;
 
@@ -72,7 +72,8 @@ const FACETS: Array<{ id: Facet; labelKey: string; icon: typeof SlidersHorizonta
 	{ id: "layout", labelKey: "layout.title", icon: Camera },
 	{ id: "audio", labelKey: "audio.title", icon: AudioLines },
 	{ id: "cursor", labelKey: "cursor.title", icon: MousePointer2 },
-	{ id: "subtitles", labelKey: "직접 자막 추가", icon: FileText },
+	// Donqui Studio's own facet keeps its Korean name in every locale, like its tabs.
+	{ id: "subtitles", labelKey: "자막", icon: Captions },
 	{ id: "transcript", labelKey: "facets.transcript", icon: FileText },
 ];
 
@@ -89,7 +90,8 @@ interface FloatingInspectorProps {
 	 * through a facet body. */
 	clips: AxcutClip[];
 	onEditClip: (clip: AxcutClip) => void;
-	onAddSubtitle: (input: ManualSubtitleInput) => Promise<void>;
+	/** The Subtitles facet's ways into the quick bar and the timeline. */
+	subtitleActions: SubtitleActions;
 	transcriptProps: TranscriptProps;
 	/** Drives the selected-element settings pane (zoom/speed/annotation/trim) —
 	 * takes over the inspector, forcing it open, whenever a timeline region is
@@ -105,7 +107,7 @@ export function FloatingInspector({
 	onToggleOpen,
 	clips,
 	onEditClip,
-	onAddSubtitle,
+	subtitleActions,
 	transcriptProps,
 	tl,
 }: FloatingInspectorProps) {
@@ -138,7 +140,7 @@ export function FloatingInspector({
 						<AudioTrackPane tl={tl} onClose={() => tl.clearSelection()} />
 					) : (
 						<FacetBody
-							onAddSubtitle={onAddSubtitle}
+							subtitleActions={subtitleActions}
 							facet={facet}
 							onCollapse={onToggleOpen}
 							transcriptProps={transcriptProps}
@@ -1152,14 +1154,14 @@ const secondaryBtnStyle: React.CSSProperties = {
 };
 
 function FacetBody({
-	onAddSubtitle,
+	subtitleActions,
 	facet,
 	onCollapse,
 	transcriptProps,
 }: {
 	facet: Facet;
 	onCollapse: () => void;
-	onAddSubtitle: (input: ManualSubtitleInput) => Promise<void>;
+	subtitleActions: SubtitleActions;
 	transcriptProps: TranscriptProps;
 }) {
 	const te = useScopedT("editor");
@@ -1190,7 +1192,7 @@ function FacetBody({
 		</button>
 	);
 
-	if (facet === "subtitles") return wrap(collapse, <ManualSubtitlePane onAdd={onAddSubtitle} />);
+	if (facet === "subtitles") return wrap(collapse, <SubtitlePane actions={subtitleActions} />);
 	if (facet === "layout") return wrap(collapse, <LayoutPane />);
 	if (facet === "audio") return wrap(collapse, <AudioPane />);
 	if (facet === "cursor") return wrap(collapse, <CursorPane />);

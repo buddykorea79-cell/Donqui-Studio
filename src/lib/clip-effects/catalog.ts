@@ -34,6 +34,17 @@ export const CLIP_EFFECT_VERSION = 2;
 /** A photo is shown still for as long as the clip lasts; a video plays from `startMs`. */
 export type ClipSourceKind = "video" | "image";
 
+/**
+ * How a source whose shape differs from the frame's sits in it: `cover` fills the frame and
+ * crops what spills over, `contain` shows all of it with bars. Absent means `contain`, what
+ * every render made before the choice existed did.
+ */
+export type ClipFit = "cover" | "contain";
+
+export function isClipFit(value: unknown): value is ClipFit {
+	return value === "cover" || value === "contain";
+}
+
 export interface CreateClipEffectRequest {
 	sourcePath: string;
 	/** Absent means a video, as every request made before photos could take an effect. */
@@ -41,8 +52,10 @@ export interface CreateClipEffectRequest {
 	startMs: number;
 	endMs: number;
 	effect: ClipEffectId;
+	/** The frame rendered: the project's output frame, within the ceiling below. */
 	width: number;
 	height: number;
+	fit?: ClipFit;
 }
 
 export interface CreateClipEffectResult {
@@ -59,11 +72,14 @@ export type ClipEffectProps = {
 	startMs: number;
 	effect: ClipEffectId;
 	sourceKind?: ClipSourceKind;
+	fit?: ClipFit;
+	/** The effect's own length, when it plays as one part of a longer composition. */
+	durationInFrames?: number;
 };
 
-/** 1080p landscape / portrait ceiling; preserve aspect ratio and H.264 even dimensions. */
+/** 4K landscape / portrait ceiling; preserve aspect ratio and H.264 even dimensions. */
 export function clipEffectDimensions(width: number, height: number) {
-	const ratio = Math.min(1, 1920 / Math.max(width, height), 1080 / Math.min(width, height));
+	const ratio = Math.min(1, 3840 / Math.max(width, height), 2160 / Math.min(width, height));
 	return {
 		width: Math.max(2, Math.floor((width * ratio) / 2) * 2),
 		height: Math.max(2, Math.floor((height * ratio) / 2) * 2),

@@ -295,8 +295,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openAudioFilesPicker: () => ipcRenderer.invoke("open-audio-files-picker"),
 	createAudioMix: (request: import("./media/audioMix").AudioMixRequest) =>
 		ipcRenderer.invoke("create-audio-mix", request),
-	createImageClip: (imagePath: string, duration: number) =>
-		ipcRenderer.invoke("create-image-clip", imagePath, duration),
+	createImageClip: (
+		imagePath: string,
+		duration: number,
+		frame?: { width: number; height: number; fit: "cover" | "contain" },
+	) => ipcRenderer.invoke("create-image-clip", imagePath, duration, frame),
 	openVideoFilePicker: () => {
 		return ipcRenderer.invoke("open-video-file-picker");
 	},

@@ -104,5 +104,11 @@
 		"recordingUnavailable": "Aufnahme ist hier nicht verfügbar",
 		"saveFailed": "Die Aufnahme konnte nicht gespeichert werden",
 		"importFailed": "Die Audiodatei konnte nicht importiert werden"
+	},
+	"zoomControls": {
+		"zoomIn": "Zeitleiste vergrößern",
+		"zoomOut": "Zeitleiste verkleinern",
+		"fit": "Ganze Zeitleiste anzeigen",
+		"level": "Zeitleisten-Zoom"
 	}
 }

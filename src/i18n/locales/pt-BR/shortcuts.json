@@ -27,7 +27,9 @@
 		"deleteSelected": "Excluir Selecionado",
 		"playPause": "Reproduzir / Pausar",
 		"copySelected": "Copiar seleção",
-		"paste": "Colar"
+		"paste": "Colar",
+		"addSubtitle": "Adicionar legenda",
+		"addTitle": "Adicionar título"
 	},
 	"fixedActions": {
 		"undo": "Desfazer",
@@ -38,6 +40,10 @@
 		"panTimeline": "Mover Linha do Tempo",
 		"zoomTimeline": "Zoom na Linha do Tempo",
 		"frameBack": "Quadro Anterior",
-		"frameForward": "Próximo Quadro"
+		"frameForward": "Próximo Quadro",
+		"editSubtitle": "Editar o texto selecionado",
+		"subtitleStartToPlayhead": "Início do texto no cursor",
+		"subtitleEndToPlayhead": "Fim do texto no cursor",
+		"zoomTimelineKeys": "Zoom da linha do tempo: aproximar / afastar / ajustar"
 	}
 }

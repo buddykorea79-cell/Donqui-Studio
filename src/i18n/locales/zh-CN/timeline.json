@@ -104,5 +104,11 @@
 		"recordingUnavailable": "此处无法录音",
 		"saveFailed": "无法保存录音",
 		"importFailed": "无法导入音频文件"
+	},
+	"zoomControls": {
+		"zoomIn": "放大时间线",
+		"zoomOut": "缩小时间线",
+		"fit": "显示整个时间线",
+		"level": "时间线缩放"
 	}
 }

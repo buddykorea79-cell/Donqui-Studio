@@ -28,7 +28,8 @@ export interface VideoFrameData {
 	duration: number; // in microseconds
 }
 
-export type ExportQuality = "medium" | "good" | "source";
+/** `uhd` is a fixed 2160p short side, the way `good` is 1080p. */
+export type ExportQuality = "medium" | "good" | "uhd" | "source";
 
 // GIF Export Types
 export type ExportFormat = "mp4" | "gif";

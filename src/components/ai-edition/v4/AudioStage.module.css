@@ -2,7 +2,8 @@
    docked under it like the editor's own timeline. */
 .stage { position: absolute; inset: 0; display: flex; flex-direction: column; color: var(--fg); }
 .page { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px; }
-/* As tall as its rows need — toolbar, ruler and one 46 px row per layer — up to half the stage. */
+/* As tall as its rows need — toolbar, ruler, one 47 px row per track and the new-track row — up
+   to half the stage. */
 .dock { flex: 0 0 auto; max-height: 46%; min-height: 150px; display: grid; }
 .inner { width: min(1200px, 100%); margin: 0 auto; display: grid; gap: 16px; }
 .header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
@@ -33,7 +34,28 @@
 
 .empty { text-align: center; padding: 36px 24px; border: 1px dashed var(--border-hi); border-radius: var(--r-lg); display: grid; justify-items: center; gap: 12px; }
 
-/* The selected layer's settings. */
+/* The clip library beside the selected clip's settings. */
+.columns { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.library { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.sectionHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.sectionHead h2 { margin: 0; font-size: 14px; }
+.sources { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 320px; overflow-y: auto; }
+.source { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); color: var(--fg-2); cursor: grab; }
+.source[data-kind="music"] > svg { color: var(--accent); }
+.source[data-kind="voiceover"] > svg { color: var(--warn); }
+.source:active { cursor: grabbing; }
+.sourceText { display: grid; gap: 2px; min-width: 0; }
+.sourceText strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--fg); }
+.sourceText span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--muted); }
+.source button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 28px; height: 28px; padding: 0 7px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); color: var(--fg-2); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.source button:hover { background: var(--surface-3); }
+.source button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.source .addSource { background: var(--accent); border-color: var(--accent); color: var(--accent-on, var(--bg)); font-weight: 600; }
+.source .addSource:hover { background: var(--accent); filter: brightness(1.05); }
+.note kbd { display: inline-block; padding: 0 5px; border: 1px solid var(--border-hi); border-radius: 4px; background: var(--surface-2); color: var(--fg-2); font: inherit; font-size: 11px; }
+.actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+
+/* The selected clip's settings. */
 .panel { display: grid; gap: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
 .panelHead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .panelHead h2 { margin: 0; font-size: 15px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -54,4 +76,5 @@
 .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .inline { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-2); }
 
+@media (max-width: 1000px) { .columns { grid-template-columns: 1fr; } }
 @media (max-width: 850px) { .page { padding: 16px; } .dock { max-height: 52%; } }

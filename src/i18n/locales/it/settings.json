@@ -256,7 +256,8 @@
 		"title": "Risoluzione esportazione",
 		"low": "720p",
 		"high": "Originale",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "Traccia audio",

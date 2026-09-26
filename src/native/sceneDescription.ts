@@ -134,6 +134,17 @@ export interface SceneSpeedRegion {
 	clipIndex?: number;
 }
 
+/** The edge a subtitle typed in Edit keeps to: its box's, nearest the frame's edge. */
+function subtitleEdge(region: {
+	subtitleKind?: string;
+	position: { y: number };
+	size: { height: number };
+}): "top" | "bottom" | undefined {
+	if (!region.subtitleKind) return undefined;
+	const middle = region.position.y + region.size.height / 2;
+	return middle > 60 ? "bottom" : middle < 40 ? "top" : undefined;
+}
+
 /** A timeline annotation (`document.annotations`), projected onto each clip's source time the
  *  same way zoom and speed regions are.
  *
@@ -1145,8 +1156,14 @@ export function buildSceneDescription(
 				// Only captions carry a space; annotations must keep emitting the exact same keys
 				// they always have, so the field is omitted rather than sent as null/undefined.
 				const space = (region as { space?: "frame" }).space;
-				// Same treatment, same reason: only captions pin an edge.
-				const verticalAlign = (region as { verticalAlign?: "top" | "bottom" }).verticalAlign;
+				// Same treatment, same reason: only captions pin an edge — and subtitles typed in
+				// Edit, which keep to the edge of their box nearest the frame's, so a second line
+				// grows away from it instead of pushing both ways.
+				const verticalAlign =
+					(region as { verticalAlign?: "top" | "bottom" }).verticalAlign ??
+					subtitleEdge(
+						region as { subtitleKind?: string; position: { y: number }; size: { height: number } },
+					);
 				const base = {
 					id: region.id,
 					startSec: region.startMs / 1000,

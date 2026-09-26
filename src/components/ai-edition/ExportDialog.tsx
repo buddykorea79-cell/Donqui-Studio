@@ -19,6 +19,7 @@ import {
 } from "@/lib/ai-edition/document/outputFormat";
 import type { AxcutDocument } from "@/lib/ai-edition/schema";
 import { getEditorSettings } from "@/lib/ai-edition/store/editorSettings";
+import { getOutputSettings, type OutputResolution } from "@/lib/ai-edition/store/outputSettings";
 import { assetCameraSource } from "@/lib/ai-edition/timeline/camera";
 import { resolveClipSourceEndSec } from "@/lib/ai-edition/timeline/clipDuration";
 import {
@@ -134,8 +135,16 @@ const QUALITY_OPTIONS: Array<{
 }> = [
 	{ value: "medium", labelKey: "exportQuality.low" },
 	{ value: "good", labelKey: "exportQuality.medium" },
+	{ value: "uhd", labelKey: "exportQuality.ultra" },
 	{ value: "source", labelKey: "exportQuality.high" },
 ];
+
+/** The tier the project's own resolution setting asks for; the dialog opens on it. */
+const QUALITY_FOR_RESOLUTION: Record<OutputResolution, ExportQuality> = {
+	"720p": "medium",
+	"1080p": "good",
+	"2160p": "uhd",
+};
 
 interface ExportDialogProps {
 	open: boolean;
@@ -262,6 +271,16 @@ export function ExportDialog({ open, onClose, document }: ExportDialogProps) {
 					aspectRatioValue: EXPORT_ASPECT,
 				})
 			: null;
+
+	// Each opening starts from the project's settings (설정: 화질 and 프레임): the dialog can still
+	// override them for one export, and nothing it picks is written back.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only on opening — a save while the dialog is up must not undo what was picked in it
+	useEffect(() => {
+		if (!open) return;
+		const output = getOutputSettings(document);
+		setQuality(QUALITY_FOR_RESOLUTION[output.resolution]);
+		setFps(output.fps);
+	}, [open]);
 
 	useEffect(() => {
 		if (!open) {
@@ -503,7 +522,7 @@ export function ExportDialog({ open, onClose, document }: ExportDialogProps) {
 						>
 							{t("exportDialog.quality")}
 						</div>
-						<div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+						<div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
 							{QUALITY_OPTIONS.map((q) => (
 								<button
 									type="button"

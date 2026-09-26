@@ -27,7 +27,9 @@
 		"deleteSelected": "刪除所選",
 		"playPause": "播放 / 暫停",
 		"copySelected": "複製所選",
-		"paste": "貼上"
+		"paste": "貼上",
+		"addSubtitle": "新增字幕",
+		"addTitle": "新增標題"
 	},
 	"fixedActions": {
 		"undo": "復原",
@@ -38,6 +40,10 @@
 		"panTimeline": "平移時間軸",
 		"zoomTimeline": "縮放時間軸",
 		"frameBack": "上一影格",
-		"frameForward": "下一影格"
+		"frameForward": "下一影格",
+		"editSubtitle": "編輯所選字幕",
+		"subtitleStartToPlayhead": "字幕開始設為播放位置",
+		"subtitleEndToPlayhead": "字幕結束設為播放位置",
+		"zoomTimelineKeys": "時間軸放大 / 縮小 / 全部顯示"
 	}
 }

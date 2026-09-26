@@ -10,6 +10,7 @@ import {
 	PanelLeft,
 	RefreshCw,
 	Save,
+	Settings2,
 	Sparkles,
 	Sun,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import logoMark from "@/assets/donqui-mark.svg";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/hooks/useTheme";
 import { getAvailableLocales, getLocaleName, getLocaleShort } from "@/i18n/loader";
+import { PROJECT_SETTINGS_TITLE } from "../projectSettingsTitle";
 import { StylePresetsMenu } from "../StylePresetsMenu";
 import styles from "./EditorShellV4.module.css";
 
@@ -31,6 +33,8 @@ export interface TopBarActions {
 	openSettings: () => void;
 	renameProject: (title: string) => void;
 	toggleChat: () => void;
+	/** Donqui Studio's Settings: the frame, resolution and framing of the video. */
+	openProjectSettings: () => void;
 	openProviderSettings: () => void;
 	showAbout: () => void;
 	checkForUpdates: () => void;
@@ -417,10 +421,20 @@ function AppMenu({ actions }: { actions: TopBarActions }) {
 						<Keyboard size={15} />
 						{tShortcuts("title")}
 					</button>
-					{/* Settings surfaces together, above the separator. Both rows are labelled with the
-					    title of the dialog they open, so neither can drift from it — and unlike the AI
-					    panel's own entry points, this one is reachable in Media and Rec too, which is
-					    the whole reason the dialog's open state was lifted out of LeftPanel (#420). */}
+					{/* Settings surfaces together, above the separator. Every row is labelled with the
+					    title of the dialog it opens, so none can drift from it — and unlike the AI
+					    panel's own entry points, these are reachable in Media and Rec too, which is
+					    the whole reason the dialog's open state was lifted out of LeftPanel (#420).
+					    The video's own settings come first, above AI. */}
+					<button
+						type="button"
+						role="menuitem"
+						className={styles.appMenuRow}
+						onClick={run(actions.openProjectSettings)}
+					>
+						<Settings2 size={15} />
+						{PROJECT_SETTINGS_TITLE}
+					</button>
 					<button
 						type="button"
 						role="menuitem"

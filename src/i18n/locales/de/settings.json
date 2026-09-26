@@ -256,7 +256,8 @@
 		"title": "Export-Auflösung",
 		"low": "720p",
 		"high": "Quelle",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "Audiospur",

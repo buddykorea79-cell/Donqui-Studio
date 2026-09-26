@@ -22,7 +22,8 @@ import { createContext, type ReactNode, useContext, useMemo, useState } from "re
 // global shortcuts, which was only ever half an answer — this context knows about its own
 // dialogs and about no others (#434). `isModalOpen` (lib/ai-edition/modalGuard) is where that
 // question is asked now.
-export type EditorDialogSection = "providers";
+// "project" is Donqui Studio's Settings dialog: the frame, resolution and framing of the video.
+export type EditorDialogSection = "providers" | "project";
 
 interface EditorDialogsActions {
 	openDialog: (section: EditorDialogSection) => void;

@@ -7,10 +7,15 @@ export function ClipEffectComposition({
 	startMs,
 	effect,
 	sourceKind = "video",
+	fit = "contain",
+	durationInFrames: ownDuration,
 }: ClipEffectProps) {
 	const frame = useCurrentFrame();
-	const { fps, durationInFrames } = useVideoConfig();
-	const fill = { width: "100%", height: "100%", objectFit: "contain" } as const;
+	const config = useVideoConfig();
+	const { fps } = config;
+	// Inside a longer composition the effect runs over its own part of it, not the whole.
+	const durationInFrames = ownDuration ?? config.durationInFrames;
+	const fill = { width: "100%", height: "100%", objectFit: fit } as const;
 	return (
 		<AbsoluteFill style={{ overflow: "hidden", backgroundColor: "black" }}>
 			<AbsoluteFill style={clipEffectStyle(effect, frame, durationInFrames, fps)}>

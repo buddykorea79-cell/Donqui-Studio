@@ -9,6 +9,7 @@ import {
 	type CreateClipEffectRequest,
 	clipEffectDimensions,
 	isClipEffectId,
+	isClipFit,
 } from "../../src/lib/clip-effects/catalog";
 import { serveClipSource } from "./clipEffectsSource";
 
@@ -29,6 +30,7 @@ export function validateClipEffectRequest(request: CreateClipEffectRequest): voi
 	)
 		throw new Error("Unknown clip source kind");
 	if (!isClipEffectId(request.effect)) throw new Error("Unknown clip effect");
+	if (request.fit !== undefined && !isClipFit(request.fit)) throw new Error("Unknown clip fit");
 	if (
 		!Number.isFinite(request.startMs) ||
 		!Number.isFinite(request.endMs) ||
@@ -58,6 +60,8 @@ export async function clipEffectCacheKey(request: CreateClipEffectRequest): Prom
 			...clipEffectDimensions(request.width, request.height),
 			// Only a photo says so: a video's key stays what it was, and so does its cache.
 			...(request.sourceKind === "image" ? { sourceKind: "image" } : {}),
+			// Likewise only a cover fit: contain is what every earlier render did.
+			...(request.fit === "cover" ? { fit: "cover" } : {}),
 		}),
 	);
 	for await (const chunk of createReadStream(request.sourcePath)) hash.update(chunk);
@@ -158,6 +162,7 @@ async function renderClipEffect(
 			startMs: request.startMs,
 			effect: request.effect,
 			sourceKind: image ? ("image" as const) : ("video" as const),
+			fit: request.fit ?? ("contain" as const),
 		};
 		const composition = await renderer.selectComposition({
 			serveUrl: runtime.bundlePath,

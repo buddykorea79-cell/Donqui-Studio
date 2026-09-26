@@ -27,7 +27,9 @@
 		"deleteSelected": "حذف المحدد",
 		"playPause": "تشغيل / إيقاف مؤقت",
 		"copySelected": "نسخ المحدد",
-		"paste": "لصق"
+		"paste": "لصق",
+		"addSubtitle": "إضافة ترجمة",
+		"addTitle": "إضافة عنوان"
 	},
 	"fixedActions": {
 		"undo": "تراجع",
@@ -38,6 +40,10 @@
 		"panTimeline": "تحريك المخطط الزمني",
 		"zoomTimeline": "تكبير المخطط الزمني",
 		"frameBack": "إطار للخلف",
-		"frameForward": "إطار للأمام"
+		"frameForward": "إطار للأمام",
+		"editSubtitle": "تحرير النص المحدد",
+		"subtitleStartToPlayhead": "بداية النص عند موضع التشغيل",
+		"subtitleEndToPlayhead": "نهاية النص عند موضع التشغيل",
+		"zoomTimelineKeys": "تكبير / تصغير / ملاءمة المخطط الزمني"
 	}
 }

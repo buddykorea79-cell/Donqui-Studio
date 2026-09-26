@@ -14,6 +14,7 @@ import {
 	Trash2,
 	Wand2,
 	ZoomIn,
+	ZoomOut,
 } from "lucide-react";
 import {
 	Fragment,
@@ -44,10 +45,12 @@ import {
 } from "@/lib/ai-edition/document/audioTracks";
 import { createId } from "@/lib/ai-edition/document/ids";
 import { isGeneratedAssetId } from "@/lib/ai-edition/document/insertion";
+import { isSubtitle } from "@/lib/ai-edition/document/subtitles";
 import {
 	projectPlaybackSecToRawTimeline,
 	projectRawTimelineSecToPlayback,
 } from "@/lib/ai-edition/document/timeline";
+import { isModalOpen } from "@/lib/ai-edition/modalGuard";
 import { setUiProbeScrubbing } from "@/lib/ai-edition/perf/uiFrameProbe";
 import type { AxcutAudioTrack, AxcutClip } from "@/lib/ai-edition/schema";
 import { audioGainScalar } from "@/lib/ai-edition/store/editorSettings";
@@ -70,7 +73,7 @@ import {
 	resolveTimelineSpanToTrim,
 	ventilateTimelineSpanToTrims,
 } from "@/lib/ai-edition/timeline/trim-mapping";
-import { formatBinding } from "@/lib/shortcuts";
+import { formatBinding, isTextEditingTarget } from "@/lib/shortcuts";
 import { nativeBridgeClient } from "@/native/client";
 import { TransportBar } from "../TransportBar";
 import type { VideoSource } from "../VirtualPreview";
@@ -554,6 +557,11 @@ const AudioLanePill = memo(function AudioLanePill({
 	);
 });
 
+/** The narrowest view the nav allows: a fiftieth of the timeline. */
+const MIN_NAV_SPAN = 0.02;
+/** One click of the zoom buttons or one = / − key. */
+const NAV_ZOOM_STEP = 1.5;
+
 interface LanePill {
 	id: string;
 	kind: "annotation" | "speed" | "trim" | "zoom" | "cameraFullscreen";
@@ -722,7 +730,11 @@ export function V4Timeline({
 		kind: "annotation",
 		start: p.start,
 		end: p.end,
-		label: t("toolbar.newAnnotation"),
+		// A subtitle reads as what it says, so the lane doubles as a script.
+		label:
+			isSubtitle(p.member) && (p.member.content || p.member.textContent)
+				? ((p.member.content || p.member.textContent) ?? "")
+				: t("toolbar.newAnnotation"),
 		sourceIds: p.ids,
 	}));
 	const speedPills: LanePill[] = coalesceRegionsForRuler(tl.speedRegions).map((p) => ({
@@ -1370,6 +1382,40 @@ export function V4Timeline({
 		panel.addEventListener("wheel", onWheelNative, { passive: false });
 		return () => panel.removeEventListener("wheel", onWheelNative);
 	}, [showLanes]);
+
+	// The same zoom from the toolbar's buttons, its slider and the keys = − \ — around the
+	// playhead when it is in view (what the user is looking at), else the view's middle.
+	const zoomTo = useCallback(
+		(zoom: number) => {
+			setNav((prev) => {
+				const width = prev.end - prev.start;
+				const nextWidth = Math.min(1, Math.max(MIN_NAV_SPAN, 1 / zoom));
+				const playhead = useProjectStore.getState().currentTimeSec / total;
+				const center =
+					playhead >= prev.start && playhead <= prev.end ? playhead : prev.start + width / 2;
+				const start = Math.max(0, Math.min(1 - nextWidth, center - nextWidth / 2));
+				return { start, end: start + nextWidth };
+			});
+		},
+		[total],
+	);
+	const navZoom = 1 / navSpan;
+	const navZoomRef = useRef(navZoom);
+	navZoomRef.current = navZoom;
+	useEffect(() => {
+		if (!showLanes) return;
+		const onKey = (event: KeyboardEvent) => {
+			if (event.ctrlKey || event.metaKey || event.altKey) return;
+			if (isTextEditingTarget(event.target) || isModalOpen()) return;
+			if (event.key === "=" || event.key === "+") zoomTo(navZoomRef.current * NAV_ZOOM_STEP);
+			else if (event.key === "-" || event.key === "_") zoomTo(navZoomRef.current / NAV_ZOOM_STEP);
+			else if (event.key === "\\") zoomTo(1);
+			else return;
+			event.preventDefault();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [showLanes, zoomTo]);
 
 	// Track the tracks' content width for the ruler. .tlTracks and .tlRulerRow
 	// carry the same horizontal padding and the tracks' scrollbar is hidden, so
@@ -2026,9 +2072,55 @@ export function V4Timeline({
 							<span className={styles.tlHint}>
 								<span className={styles.tlKbd}>Shift+Scroll</span> {t("labels.pan")}
 							</span>
-							<span className={styles.tlHint}>
-								<span className={styles.tlKbd}>Ctrl+Scroll</span> {t("labels.zoom")}
-							</span>
+							<div
+								className={styles.tlZoom}
+								role="group"
+								aria-label={t("zoomControls.level")}
+								title="Ctrl+Scroll · = / − / \\"
+							>
+								<button
+									type="button"
+									className={styles.tlToolBtn}
+									aria-label={t("zoomControls.zoomOut")}
+									title={`${t("zoomControls.zoomOut")} (−)`}
+									disabled={navZoom <= 1.0001}
+									onClick={() => zoomTo(navZoom / NAV_ZOOM_STEP)}
+								>
+									<ZoomOut size={15} />
+								</button>
+								<input
+									type="range"
+									aria-label={t("zoomControls.level")}
+									min={0}
+									max={Math.log2(1 / MIN_NAV_SPAN)}
+									step={0.01}
+									value={Math.log2(navZoom)}
+									onChange={(event) => zoomTo(2 ** Number(event.target.value))}
+								/>
+								<button
+									type="button"
+									className={styles.tlToolBtn}
+									aria-label={t("zoomControls.zoomIn")}
+									title={`${t("zoomControls.zoomIn")} (=)`}
+									disabled={navZoom >= 1 / MIN_NAV_SPAN - 0.001}
+									onClick={() => zoomTo(navZoom * NAV_ZOOM_STEP)}
+								>
+									<ZoomIn size={15} />
+								</button>
+								<span className={styles.tlZoomValue}>
+									×{navZoom < 10 ? navZoom.toFixed(1) : Math.round(navZoom)}
+								</span>
+								<button
+									type="button"
+									className={styles.tlToolBtn}
+									aria-label={t("zoomControls.fit")}
+									title={`${t("zoomControls.fit")} (\\)`}
+									disabled={navZoom <= 1.0001}
+									onClick={() => zoomTo(1)}
+								>
+									<Maximize2 size={14} />
+								</button>
+							</div>
 						</div>
 					</>
 				) : null}

@@ -256,7 +256,8 @@
 		"title": "Rozlišení exportu",
 		"low": "720p",
 		"high": "Zdroj",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "Zvuková stopa",

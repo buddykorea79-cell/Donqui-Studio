@@ -256,7 +256,8 @@
 		"title": "書き出し解像度",
 		"low": "720p",
 		"high": "Source",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "オーディオトラック",

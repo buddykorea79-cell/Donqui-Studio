@@ -6,7 +6,47 @@ import path from "node:path";
 import { resolveFfmpeg } from "./audioPeaks";
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp"];
-export function imageClipArgs(input: string, duration: number, output: string): string[] {
+
+/**
+ * The frame a photo is made into: the project's output frame, filled (`cover`, cropping what
+ * spills over) or with the whole photo in it (`contain`, on black). Absent, the photo keeps its
+ * own shape within 1080p, as every photo clip made before the setting did.
+ */
+export interface ImageClipFrame {
+	width: number;
+	height: number;
+	fit: "cover" | "contain";
+}
+
+export function validateImageClipFrame(frame: unknown): ImageClipFrame | undefined {
+	if (frame === undefined || frame === null) return undefined;
+	const value = frame as Partial<ImageClipFrame>;
+	const side = (n: unknown) =>
+		typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 4096 && n % 2 === 0;
+	if (
+		!side(value.width) ||
+		!side(value.height) ||
+		(value.fit !== "cover" && value.fit !== "contain")
+	)
+		throw new Error("Invalid photo frame");
+	return { width: value.width as number, height: value.height as number, fit: value.fit };
+}
+
+function frameFilter(frame: ImageClipFrame | undefined): string {
+	if (!frame)
+		return "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,format=yuv420p";
+	const { width, height } = frame;
+	return frame.fit === "cover"
+		? `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,format=yuv420p`
+		: `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p`;
+}
+
+export function imageClipArgs(
+	input: string,
+	duration: number,
+	output: string,
+	frame?: ImageClipFrame,
+): string[] {
 	if (!Number.isFinite(duration) || duration < 0.5 || duration > 600)
 		throw new Error("Photo duration must be between 0.5 and 600 seconds");
 	return [
@@ -26,12 +66,13 @@ export function imageClipArgs(input: string, duration: number, output: string): 
 		"-t",
 		String(duration),
 		"-vf",
-		"scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,format=yuv420p",
+		frameFilter(frame),
 		"-an",
 		"-c:v",
 		"libopenh264",
 		"-b:v",
-		"6M",
+		// A still costs little per pixel, but a 4K frame still needs more than a 1080p one.
+		frame && Math.min(frame.width, frame.height) > 1080 ? "16M" : "6M",
 		"-threads",
 		"2",
 		"-filter_threads",
@@ -47,20 +88,27 @@ export function createImageClip(
 	input: string,
 	duration: number,
 	cacheDir: string,
+	frame?: ImageClipFrame,
 ): Promise<string> {
-	const work = queue.then(() => convert(input, duration, cacheDir));
+	const work = queue.then(() => convert(input, duration, cacheDir, frame));
 	queue = work.catch(() => undefined);
 	return work;
 }
-async function convert(input: string, duration: number, cacheDir: string): Promise<string> {
-	imageClipArgs(input, duration, "validate.mp4");
+async function convert(
+	input: string,
+	duration: number,
+	cacheDir: string,
+	frame: ImageClipFrame | undefined,
+): Promise<string> {
+	imageClipArgs(input, duration, "validate.mp4", frame);
 	if (!IMAGE_EXTENSIONS.includes(path.extname(input).slice(1).toLowerCase()))
 		throw new Error("Unsupported photo format");
 	const source = await stat(input);
 	if (!source.isFile() || source.size > 100 * 1024 * 1024)
 		throw new Error("Choose a photo smaller than 100 MB");
 	const hash = createHash("sha256").update(
-		JSON.stringify({ step: "image-clip", version: 1, duration }),
+		// The frame joins the key only when there is one: older clips keep their cache.
+		JSON.stringify({ step: "image-clip", version: 1, duration, ...(frame ? { frame } : {}) }),
 	);
 	for await (const chunk of createReadStream(input)) hash.update(chunk);
 	await mkdir(cacheDir, { recursive: true });
@@ -79,7 +127,7 @@ async function convert(input: string, duration: number, cacheDir: string): Promi
 	const temporary = path.join(cacheDir, randomUUID() + ".tmp.mp4");
 	try {
 		await new Promise<void>((resolve, reject) => {
-			const child = spawn(ffmpeg, imageClipArgs(input, duration, temporary), {
+			const child = spawn(ffmpeg, imageClipArgs(input, duration, temporary, frame), {
 				windowsHide: true,
 				stdio: ["ignore", "ignore", "pipe"],
 			});

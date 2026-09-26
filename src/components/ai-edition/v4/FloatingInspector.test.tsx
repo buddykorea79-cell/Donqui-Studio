@@ -50,7 +50,7 @@ import { FloatingInspector } from "./FloatingInspector";
 
 describe("FloatingInspector", () => {
 	const defaultProps: React.ComponentProps<typeof FloatingInspector> = {
-		onAddSubtitle: vi.fn(),
+		subtitleActions: { add: vi.fn(), edit: vi.fn(), reveal: vi.fn(), remove: vi.fn() },
 		facet: "layout" as const,
 		open: true,
 		onFacetChange: vi.fn(),

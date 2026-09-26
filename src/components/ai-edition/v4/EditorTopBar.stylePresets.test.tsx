@@ -107,6 +107,7 @@ function renderPane() {
 					openSettings: noop,
 					renameProject: noop,
 					toggleChat: noop,
+					openProjectSettings: noop,
 					openProviderSettings: noop,
 					showAbout: noop,
 					checkForUpdates: noop,

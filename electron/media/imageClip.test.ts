@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { addManualSubtitle } from "../../src/lib/ai-edition/document/manualSubtitle";
 import { createEmptyDocument, documentSchema } from "../../src/lib/ai-edition/schema";
-import { createImageClip, imageClipArgs } from "./imageClip";
+import { createImageClip, imageClipArgs, validateImageClipFrame } from "./imageClip";
 
 vi.mock("electron", () => ({ app: undefined }));
 const run = promisify(execFile);
@@ -20,6 +20,40 @@ describe("photo clips", () => {
 		expect(args[args.indexOf("-t") + 1]).toBe("3.5");
 		expect(args).toContain("libopenh264");
 		expect(args[args.indexOf("-threads") + 1]).toBe("2");
+	});
+	it("fills the project's frame, or shows the whole photo on black", () => {
+		const filter = (args: string[]) => args[args.indexOf("-vf") + 1];
+		const cover = imageClipArgs("p.png", 3, "o.mp4", { width: 1920, height: 1080, fit: "cover" });
+		expect(filter(cover)).toBe(
+			"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,format=yuv420p",
+		);
+		const contain = imageClipArgs("p.png", 3, "o.mp4", {
+			width: 1080,
+			height: 1920,
+			fit: "contain",
+		});
+		expect(filter(contain)).toContain("pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black");
+		// Without a frame, a photo keeps its own shape within 1080p, as before.
+		expect(filter(imageClipArgs("p.png", 3, "o.mp4"))).toContain(
+			"force_original_aspect_ratio=decrease",
+		);
+		const uhd = imageClipArgs("p.png", 3, "o.mp4", { width: 3840, height: 2160, fit: "cover" });
+		expect(uhd[uhd.indexOf("-b:v") + 1]).toBe("16M");
+	});
+	it("accepts only a frame H.264 can encode", () => {
+		expect(validateImageClipFrame(undefined)).toBeUndefined();
+		expect(validateImageClipFrame({ width: 1920, height: 1080, fit: "cover" })).toEqual({
+			width: 1920,
+			height: 1080,
+			fit: "cover",
+		});
+		for (const frame of [
+			{ width: 1921, height: 1080, fit: "cover" },
+			{ width: 1920, height: 1080, fit: "stretch" },
+			{ width: 8192, height: 4320, fit: "cover" },
+			"1920x1080",
+		])
+			expect(() => validateImageClipFrame(frame)).toThrow();
 	});
 	it.runIf(process.env.MANGOPANG_INTEGRATION === "1")(
 		"creates a decodable cached photo clip and export fixture",

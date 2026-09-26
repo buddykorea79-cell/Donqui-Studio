@@ -104,5 +104,11 @@
 		"recordingUnavailable": "Không thể ghi âm ở đây",
 		"saveFailed": "Không thể lưu bản ghi",
 		"importFailed": "Không thể nhập tệp âm thanh"
+	},
+	"zoomControls": {
+		"zoomIn": "Phóng to dòng thời gian",
+		"zoomOut": "Thu nhỏ dòng thời gian",
+		"fit": "Hiện toàn bộ dòng thời gian",
+		"level": "Mức thu phóng dòng thời gian"
 	}
 }

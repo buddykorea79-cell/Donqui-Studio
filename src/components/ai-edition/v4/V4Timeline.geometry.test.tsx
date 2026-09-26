@@ -234,6 +234,35 @@ describe("V4Timeline scrubbing", () => {
 	});
 });
 
+describe("V4Timeline zoom controls", () => {
+	/** The canvas's width in % of the view: 100 is the whole timeline in view. */
+	const canvasWidth = () =>
+		Number.parseFloat((document.querySelector("[class*=tlCanvas]") as HTMLElement).style.width);
+
+	it("stretches and shrinks the timeline from its buttons, slider and keys", () => {
+		renderTimeline();
+		expect(canvasWidth()).toBeCloseTo(100);
+		expect(screen.getByRole("button", { name: "zoomControls.zoomOut" })).toBeDisabled();
+		fireEvent.click(screen.getByRole("button", { name: "zoomControls.zoomIn" }));
+		expect(canvasWidth()).toBeCloseTo(150);
+		fireEvent.click(screen.getByRole("button", { name: "zoomControls.zoomIn" }));
+		expect(canvasWidth()).toBeCloseTo(225);
+		fireEvent.keyDown(window, { key: "-" });
+		expect(canvasWidth()).toBeCloseTo(150);
+		fireEvent.change(screen.getByRole("slider", { name: "zoomControls.level" }), {
+			target: { value: "3" },
+		});
+		expect(canvasWidth()).toBeCloseTo(800);
+		fireEvent.keyDown(window, { key: "=" });
+		expect(canvasWidth()).toBeCloseTo(1200);
+		fireEvent.click(screen.getByRole("button", { name: "zoomControls.fit" }));
+		expect(canvasWidth()).toBeCloseTo(100);
+		fireEvent.keyDown(window, { key: "=" });
+		fireEvent.keyDown(window, { key: "\\" });
+		expect(canvasWidth()).toBeCloseTo(100);
+	});
+});
+
 describe("V4Timeline lane pills", () => {
 	it("draws a pill exactly as wide as its region, at any zoom", () => {
 		// 1 s of 1800 s. The old `Math.max(1.5, …)` floor drew this as 1.5% — 27

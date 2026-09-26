@@ -104,5 +104,11 @@
 		"recordingUnavailable": "여기에서는 녹음할 수 없습니다",
 		"saveFailed": "녹음을 저장하지 못했습니다",
 		"importFailed": "오디오 파일을 가져오지 못했습니다"
+	},
+	"zoomControls": {
+		"zoomIn": "타임라인 확대",
+		"zoomOut": "타임라인 축소",
+		"fit": "타임라인 전체 보기",
+		"level": "타임라인 배율"
 	}
 }

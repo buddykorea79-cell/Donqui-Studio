@@ -27,7 +27,9 @@
 		"deleteSelected": "Supprimer la sélection",
 		"playPause": "Lecture / Pause",
 		"copySelected": "Copier la sélection",
-		"paste": "Coller"
+		"paste": "Coller",
+		"addSubtitle": "Ajouter un sous-titre",
+		"addTitle": "Ajouter un titre"
 	},
 	"fixedActions": {
 		"undo": "Annuler",
@@ -38,6 +40,10 @@
 		"panTimeline": "Panoramique de la timeline",
 		"zoomTimeline": "Zoom de la timeline",
 		"frameBack": "Image précédente",
-		"frameForward": "Image suivante"
+		"frameForward": "Image suivante",
+		"editSubtitle": "Modifier le texte sélectionné",
+		"subtitleStartToPlayhead": "Début du texte à la tête de lecture",
+		"subtitleEndToPlayhead": "Fin du texte à la tête de lecture",
+		"zoomTimelineKeys": "Zoom de la timeline : avant / arrière / ajuster"
 	}
 }

@@ -1321,6 +1321,39 @@
 	font-weight: 500;
 	color: var(--muted);
 }
+/* Zoom buttons and slider for Edit's timeline, beside the pan hint. */
+.tlZoom {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.tlZoom input[type="range"] {
+	width: 96px;
+	height: 16px;
+	appearance: none;
+	background: transparent;
+	cursor: pointer;
+}
+.tlZoom input[type="range"]::-webkit-slider-runnable-track {
+	height: 4px;
+	border-radius: 4px;
+	background: var(--border-hi);
+}
+.tlZoom input[type="range"]::-webkit-slider-thumb {
+	appearance: none;
+	width: 12px;
+	height: 12px;
+	margin-top: -4px;
+	border-radius: 50%;
+	background: var(--accent);
+}
+.tlZoomValue {
+	min-width: 34px;
+	font-size: 11px;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
 .tlKbd {
 	font-family: var(--font-mono);
 	font-size: 10.5px;

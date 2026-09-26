@@ -330,6 +330,7 @@ interface Window {
 		createImageClip?: (
 			imagePath: string,
 			duration: number,
+			frame?: import("./media/imageClip").ImageClipFrame,
 		) => Promise<import("../src/lib/clip-effects/catalog").CreateClipEffectResult>;
 		openAudioFilesPicker?: () => Promise<{
 			success: boolean;

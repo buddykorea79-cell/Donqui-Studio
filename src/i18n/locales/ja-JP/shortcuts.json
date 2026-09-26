@@ -27,7 +27,9 @@
 		"deleteSelected": "選択を削除",
 		"playPause": "再生 / 一時停止",
 		"copySelected": "選択をコピー",
-		"paste": "貼り付け"
+		"paste": "貼り付け",
+		"addSubtitle": "字幕を追加",
+		"addTitle": "タイトルを追加"
 	},
 	"fixedActions": {
 		"undo": "元に戻す",
@@ -38,6 +40,10 @@
 		"panTimeline": "タイムラインをパン",
 		"zoomTimeline": "タイムラインをズーム",
 		"frameBack": "フレームを戻す",
-		"frameForward": "フレームを進める"
+		"frameForward": "フレームを進める",
+		"editSubtitle": "選択した字幕を編集",
+		"subtitleStartToPlayhead": "字幕の開始を再生位置に",
+		"subtitleEndToPlayhead": "字幕の終了を再生位置に",
+		"zoomTimelineKeys": "タイムラインの拡大 / 縮小 / 全体表示"
 	}
 }

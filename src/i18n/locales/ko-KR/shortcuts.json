@@ -27,7 +27,9 @@
 		"deleteSelected": "선택 항목 삭제",
 		"playPause": "재생 / 일시정지",
 		"copySelected": "선택 항목 복사",
-		"paste": "붙여넣기"
+		"paste": "붙여넣기",
+		"addSubtitle": "일반 자막 추가",
+		"addTitle": "타이틀 추가"
 	},
 	"fixedActions": {
 		"undo": "실행 취소",
@@ -38,6 +40,10 @@
 		"panTimeline": "타임라인 이동",
 		"zoomTimeline": "타임라인 확대/축소",
 		"frameBack": "이전 프레임",
-		"frameForward": "다음 프레임"
+		"frameForward": "다음 프레임",
+		"editSubtitle": "선택한 자막 고치기",
+		"subtitleStartToPlayhead": "자막 시작을 재생 위치로",
+		"subtitleEndToPlayhead": "자막 끝을 재생 위치로",
+		"zoomTimelineKeys": "타임라인 확대 / 축소 / 전체 보기"
 	}
 }

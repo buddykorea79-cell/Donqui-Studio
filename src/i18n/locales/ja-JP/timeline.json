@@ -104,5 +104,11 @@
 		"recordingUnavailable": "ここでは録音できません",
 		"saveFailed": "録音を保存できませんでした",
 		"importFailed": "音声ファイルを読み込めませんでした"
+	},
+	"zoomControls": {
+		"zoomIn": "タイムラインを拡大",
+		"zoomOut": "タイムラインを縮小",
+		"fit": "タイムライン全体を表示",
+		"level": "タイムラインの倍率"
 	}
 }

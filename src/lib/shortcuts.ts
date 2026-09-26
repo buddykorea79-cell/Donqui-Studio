@@ -7,6 +7,8 @@ export const SHORTCUT_ACTIONS = [
 	"addAnnotation",
 	"addAudio",
 	"addVoiceover",
+	"addSubtitle",
+	"addTitle",
 	"deleteSelected",
 	"playPause",
 	"copySelected",
@@ -68,6 +70,30 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 		bindings: [],
 	},
 	{ i18nKey: "zoomTimeline", label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
+	{
+		i18nKey: "zoomTimelineKeys",
+		label: "Zoom Timeline In / Out / Fit",
+		display: "= / − / \\",
+		bindings: [{ key: "=" }, { key: "-" }, { key: "\\" }],
+	},
+	{
+		i18nKey: "editSubtitle",
+		label: "Edit Selected Text",
+		display: "Enter / F2",
+		bindings: [{ key: "enter" }, { key: "f2" }],
+	},
+	{
+		i18nKey: "subtitleStartToPlayhead",
+		label: "Start Text at Playhead",
+		display: "[",
+		bindings: [{ key: "[" }],
+	},
+	{
+		i18nKey: "subtitleEndToPlayhead",
+		label: "End Text at Playhead",
+		display: "]",
+		bindings: [{ key: "]" }],
+	},
 	{ i18nKey: "frameBack", label: "Frame Back", display: "←", bindings: [{ key: "arrowleft" }] },
 	{
 		i18nKey: "frameForward",
@@ -118,6 +144,9 @@ export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 	addAudio: { key: "m" },
 	// Record a voiceover over the timeline from the playhead.
 	addVoiceover: { key: "v" },
+	// Type a subtitle at the playhead: a caption, or with Shift a title (Donqui Studio).
+	addSubtitle: { key: "n" },
+	addTitle: { key: "n", shift: true },
 	deleteSelected: { key: "d", ctrl: true },
 	playPause: { key: " " },
 	copySelected: { key: "c", ctrl: true },
@@ -133,6 +162,8 @@ export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	addAnnotation: "Add Annotation",
 	addAudio: "Add Audio",
 	addVoiceover: "Record Voiceover",
+	addSubtitle: "Add Caption",
+	addTitle: "Add Title",
 	deleteSelected: "Delete Selected",
 	playPause: "Play / Pause",
 	copySelected: "Copy Selected",

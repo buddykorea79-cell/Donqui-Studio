@@ -27,7 +27,9 @@
 		"deleteSelected": "Auswahl löschen",
 		"playPause": "Wiedergabe / Pause",
 		"copySelected": "Auswahl kopieren",
-		"paste": "Einfügen"
+		"paste": "Einfügen",
+		"addSubtitle": "Untertitel hinzufügen",
+		"addTitle": "Titel hinzufügen"
 	},
 	"fixedActions": {
 		"undo": "Rückgängig",
@@ -38,6 +40,10 @@
 		"panTimeline": "Timeline verschieben",
 		"zoomTimeline": "Timeline zoomen",
 		"frameBack": "Ein Bild zurück",
-		"frameForward": "Ein Bild vor"
+		"frameForward": "Ein Bild vor",
+		"editSubtitle": "Ausgewählten Text bearbeiten",
+		"subtitleStartToPlayhead": "Textbeginn auf Abspielposition",
+		"subtitleEndToPlayhead": "Textende auf Abspielposition",
+		"zoomTimelineKeys": "Zeitleiste vergrößern / verkleinern / einpassen"
 	}
 }

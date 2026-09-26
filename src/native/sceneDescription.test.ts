@@ -1892,6 +1892,36 @@ describe("buildSceneDescription.annotations", () => {
 		expect(scene.annotations.map((a) => a.id)).toEqual(["bottom", "top"]);
 	});
 
+	it("pins a subtitle typed in Edit to its box's edge nearest the frame's", () => {
+		const subtitle = (id: string, y: number, height: number) => ({
+			id,
+			startMs: 0,
+			endMs: 1000,
+			type: "text" as const,
+			content: id,
+			subtitleKind: "caption" as const,
+			position: { x: 7.5, y },
+			size: { width: 85, height },
+			style,
+			zIndex: 0,
+		});
+		const scene = buildSceneDescription(
+			docWithAnnotations([
+				subtitle("bottom", 67.75, 23.75),
+				subtitle("middle", 25, 50),
+				subtitle("top", 8.5, 23.75),
+			]),
+		);
+		const align = (id: string) =>
+			scene.annotations.find((annotation) => annotation.id === id)?.text?.verticalAlign;
+		expect([align("bottom"), align("middle"), align("top")]).toEqual(["bottom", undefined, "top"]);
+		// A plain annotation keeps the payload it always had.
+		const plain = buildSceneDescription(
+			docWithAnnotations([{ ...subtitle("plain", 67.75, 23.75), subtitleKind: undefined }]),
+		);
+		expect(plain.annotations[0].text).not.toHaveProperty("verticalAlign");
+	});
+
 	it("is empty when the document has no annotations", () => {
 		const scene = buildSceneDescription(docWithAnnotations([]));
 		expect(scene.annotations).toEqual([]);

@@ -27,7 +27,9 @@
 		"deleteSelected": "Seçileni Sil",
 		"playPause": "Oynat / Duraklat",
 		"copySelected": "Seçileni Kopyala",
-		"paste": "Yapıştır"
+		"paste": "Yapıştır",
+		"addSubtitle": "Altyazı ekle",
+		"addTitle": "Başlık ekle"
 	},
 	"fixedActions": {
 		"undo": "Geri Al",
@@ -38,6 +40,10 @@
 		"panTimeline": "Zaman Çizelgesini Kaydır",
 		"zoomTimeline": "Zaman Çizelgesini Yakınlaştır",
 		"frameBack": "Önceki Kare",
-		"frameForward": "Sonraki Kare"
+		"frameForward": "Sonraki Kare",
+		"editSubtitle": "Seçili metni düzenle",
+		"subtitleStartToPlayhead": "Metin başlangıcını oynatma konumuna al",
+		"subtitleEndToPlayhead": "Metin bitişini oynatma konumuna al",
+		"zoomTimelineKeys": "Zaman çizelgesi yakınlaştır / uzaklaştır / sığdır"
 	}
 }

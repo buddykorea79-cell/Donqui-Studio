@@ -462,6 +462,9 @@ export const annotationRegionSchema = endGteStart(
 		style: annotationStyleSchema,
 		zIndex: z.number().int().nonnegative(),
 		annotationSource: z.literal("auto-caption").optional(),
+		/** A subtitle typed in Edit, and which look it takes: Donqui Studio's `subtitles.ts`.
+		 *  Additive: an older build keeps it as the text annotation it also is. */
+		subtitleKind: z.enum(["caption", "title"]).optional(),
 		figureData: figureDataSchema,
 		blurData: blurDataSchema,
 	}),
@@ -664,13 +667,25 @@ export const audioBoardLayerSchema = endGteStart(
 		muted: z.boolean().default(false),
 		/** The programme audio track this layer was taken from, so it is taken only once. */
 		trackId: z.string().min(1).optional(),
+		/** The timeline row (track) the clip sits on; clips on one row never overlap. Absent on
+		 *  layers written when every layer had a row of its own — they keep one each. */
+		row: z.number().int().nonnegative().optional(),
 	}),
 	"outSec",
 	"inSec",
 );
 
+/** An imported audio file in the Audio tab's clip library, and what it was imported as. */
+export const audioBoardSourceSchema = z.object({
+	assetId: z.string().min(1),
+	kind: z.enum(["voiceover", "music"]).default("music"),
+});
+
 export const audioBoardSchema = z.object({
 	layers: z.array(audioBoardLayerSchema).default([]),
+	/** The clip library: files stay here, to be placed again, when no clip on the timeline uses
+	 *  them. Absent on boards written before it; their layers' files make up the library then. */
+	library: z.array(audioBoardSourceSchema).optional(),
 	/** The mix last applied: its file's asset, and what it was made from, to tell a change since. */
 	mix: z.object({ assetId: z.string().min(1), signature: z.string() }).optional(),
 });
@@ -1188,6 +1203,7 @@ export type AxcutMediaBoardImage = z.infer<typeof mediaBoardImageSchema>;
 export type AxcutMediaBoardItem = z.infer<typeof mediaBoardItemSchema>;
 export type AxcutAudioBoard = z.infer<typeof audioBoardSchema>;
 export type AxcutAudioBoardLayer = z.infer<typeof audioBoardLayerSchema>;
+export type AxcutAudioBoardSource = z.infer<typeof audioBoardSourceSchema>;
 export type AxcutDocument = z.infer<typeof documentSchema>;
 export type AxcutDocumentInput = z.input<typeof documentSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;

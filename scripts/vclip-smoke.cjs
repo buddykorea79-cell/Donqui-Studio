@@ -129,7 +129,8 @@ function footageShownTwice(before, after) {
 			},
 			{ audio, sources, photo: photo ?? null },
 		);
-		// The music is a layer until it is mixed into the one track Media fits to.
+		// The music is a clip until it is mixed into the one track Media fits to; applying the mix
+		// moves on to Media by itself.
 		await page.getByRole("button", { name: "음악 가져오기", exact: true }).click();
 		await savedDocument((doc) => doc.audioBoard?.layers?.length === 1);
 		await page.getByRole("button", { name: "Media에 반영", exact: true }).click();
@@ -139,10 +140,15 @@ function footageShownTwice(before, after) {
 				doc.audioTracks[0].endMs === MUSIC_SEC * 1000 &&
 				doc.audioBoard.mix?.assetId === doc.audioTracks[0].assetId,
 		);
-		log(`PASS Audio: ${MUSIC_SEC} s music bed imported as a layer and mixed into Media's audio`);
+		// Applying the mix goes on to Media, whose timeline shows it on the top row.
+		await page
+			.getByRole("region", { name: "Media 타임라인" })
+			.getByText(/^오디오 믹스 · /)
+			.waitFor();
+		log(`PASS Audio: ${MUSIC_SEC} s music bed imported as a clip, mixed, and shown in Media`);
 
 		// V.Clip: every video on one page.
-		await page.getByRole("button", { name: /V\.Clip으로 이동/ }).click();
+		await page.getByRole("tab", { name: "V.Clip", exact: true }).click();
 		await page.getByRole("button", { name: "영상 가져오기", exact: true }).click();
 		const panels = sources.map((source) =>
 			page.getByRole("region", { name: `${path.basename(source)} 구간` }),
@@ -248,16 +254,19 @@ function footageShownTwice(before, after) {
 		// Media: compose under random effects, with the photo, fit to the music and apply.
 		await page.getByRole("tab", { name: /^(미디어|Media)$/ }).click();
 		await page.getByLabel("새 항목 효과", { exact: true }).selectOption("random");
-		await page.getByRole("button", { name: /모두 조합에 넣기/ }).click();
+		await page.getByRole("button", { name: /모두 타임라인에 추가/ }).click();
 		await savedDocument((value) => value.mediaBoard?.items?.length === selected);
 		if (photo) {
 			await page.getByRole("tab", { name: /^사진/ }).click();
 			await page.getByRole("button", { name: "사진 추가", exact: true }).click();
-			await page.getByRole("button", { name: "조합에 넣기", exact: true }).click();
+			await page.getByRole("button", { name: "타임라인에 추가", exact: true }).click();
 			await savedDocument((value) => value.mediaBoard?.items?.length === selected + 1);
 		}
 		const unfitted = (await savedDocument(() => true)).mediaBoard.items;
-		await page.getByRole("button", { name: "Audio 길이에 맞추기", exact: true }).click();
+		await page
+			.getByRole("region", { name: "Media 타임라인" })
+			.getByRole("button", { name: /Audio 길이에 맞추기/ })
+			.click();
 		doc = await savedDocument((value) => Math.abs(itemSec(value) - MUSIC_SEC) < 0.05);
 		const twice = footageShownTwice(unfitted, doc.mediaBoard.items);
 		// Reusing footage is allowed only when the unused footage falls short — and then it says so.
@@ -273,14 +282,15 @@ function footageShownTwice(before, after) {
 					" + ",
 				)}; ${twice.length === 0 ? "no footage shown twice" : `footage reused, with a warning: ${twice.join(", ")}`}`,
 		);
-		await page.getByRole("button", { name: "1번 미리보기", exact: true }).click();
-		await page.locator("[class*=itemPreview]").first().waitFor();
+		// The whole composition plays over the music in the project's frame.
+		const composition = page.getByRole("region", { name: "조합" });
+		await composition.getByRole("button", { name: "재생" }).click();
 		await page.waitForTimeout(2500);
 		await page.screenshot({ path: path.join(validation, "media-compose.png") });
-		await page.getByRole("button", { name: "1번 미리보기", exact: true }).click();
+		await composition.getByRole("button", { name: "일시 정지" }).click();
 
 		const applyStarted = Date.now();
-		await page.getByRole("button", { name: /타임라인에 적용/ }).click();
+		await page.getByRole("button", { name: /Edit에 반영/ }).click();
 		const items = doc.mediaBoard.items.length;
 		doc = await savedDocument((value) => value.timeline.clips.length === items, 60 * 60 * 1000);
 		const pictureSec = doc.timeline.clips.at(-1).timelineEndSec;

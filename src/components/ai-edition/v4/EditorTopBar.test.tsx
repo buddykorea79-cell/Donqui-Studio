@@ -25,6 +25,7 @@ function renderTopBar(projectTitle: string | null) {
 	const onCheckForUpdates = vi.fn();
 	const onOpenSettings = vi.fn();
 	const onOpenProviderSettings = vi.fn();
+	const onOpenProjectSettings = vi.fn();
 	const onModeChange = vi.fn();
 	render(
 		<EditorTopBar
@@ -42,6 +43,7 @@ function renderTopBar(projectTitle: string | null) {
 				openSettings: onOpenSettings,
 				renameProject: onRename,
 				toggleChat: noop,
+				openProjectSettings: onOpenProjectSettings,
 				openProviderSettings: onOpenProviderSettings,
 				showAbout: onShowAbout,
 				checkForUpdates: onCheckForUpdates,
@@ -54,6 +56,7 @@ function renderTopBar(projectTitle: string | null) {
 		onCheckForUpdates,
 		onOpenSettings,
 		onOpenProviderSettings,
+		onOpenProjectSettings,
 		onModeChange,
 	};
 }
@@ -195,6 +198,17 @@ describe("AppMenu", () => {
 		expect(screen.getByRole("menuitem", { name: "title" })).toBeInTheDocument();
 		expect(screen.getByRole("menuitem", { name: "providerSettings.title" })).toBeInTheDocument();
 		expect(screen.getByRole("menuitem", { name: /actions\.about/ })).toBeInTheDocument();
+	});
+
+	it("opens the video's own Settings from the row above AI settings", () => {
+		const { onOpenProjectSettings, onOpenProviderSettings } = renderTopBar("Demo Project");
+		fireEvent.click(screen.getByRole("button", { name: /Donqui Studio/ }));
+		const rows = screen.getAllByRole("menuitem").map((row) => row.textContent);
+		expect(rows.indexOf("설정")).toBe(rows.indexOf("providerSettings.title") - 1);
+		fireEvent.click(screen.getByRole("menuitem", { name: "설정" }));
+		expect(onOpenProjectSettings).toHaveBeenCalledTimes(1);
+		expect(onOpenProviderSettings).not.toHaveBeenCalled();
+		expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 	});
 
 	// Issue #420: the AI dialog used to be openable only from the chat panel, which mounts in

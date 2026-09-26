@@ -35,6 +35,11 @@ const ProviderSettingsDialog = lazy(() =>
 		default: module.ProviderSettingsDialog,
 	})),
 );
+const ProjectSettingsDialog = lazy(() =>
+	import("./components/ai-edition/ProjectSettings").then((module) => ({
+		default: module.ProjectSettingsDialog,
+	})),
+);
 
 export default function App() {
 	const [windowType, setWindowType] = useState(
@@ -146,6 +151,7 @@ export default function App() {
 								<VideoEditorEntry />
 								<ShortcutsConfigDialog />
 								<ProviderSettingsDialog />
+								<ProjectSettingsDialog />
 							</Suspense>
 						</EditorDialogsProvider>
 					</ShortcutsProvider>

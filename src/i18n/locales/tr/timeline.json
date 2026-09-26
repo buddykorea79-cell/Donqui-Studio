@@ -104,5 +104,11 @@
 		"recordingUnavailable": "Burada kayıt kullanılamıyor",
 		"saveFailed": "Kayıt kaydedilemedi",
 		"importFailed": "Ses dosyası içe aktarılamadı"
+	},
+	"zoomControls": {
+		"zoomIn": "Zaman çizelgesini yakınlaştır",
+		"zoomOut": "Zaman çizelgesini uzaklaştır",
+		"fit": "Tüm zaman çizelgesini göster",
+		"level": "Zaman çizelgesi yakınlaştırma"
 	}
 }

@@ -104,5 +104,11 @@
 		"recordingUnavailable": "L'enregistrement n'est pas disponible ici",
 		"saveFailed": "Impossible d'enregistrer la capture",
 		"importFailed": "Impossible d'importer le fichier audio"
+	},
+	"zoomControls": {
+		"zoomIn": "Agrandir la timeline",
+		"zoomOut": "Réduire la timeline",
+		"fit": "Afficher toute la timeline",
+		"level": "Zoom de la timeline"
 	}
 }

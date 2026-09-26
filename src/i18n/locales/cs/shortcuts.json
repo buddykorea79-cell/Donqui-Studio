@@ -27,7 +27,9 @@
 		"deleteSelected": "Smazat vybrané",
 		"playPause": "Přehrát / Pozastavit",
 		"copySelected": "Kopírovat vybrané",
-		"paste": "Vložit"
+		"paste": "Vložit",
+		"addSubtitle": "Přidat titulek",
+		"addTitle": "Přidat nadpis"
 	},
 	"fixedActions": {
 		"undo": "Zpět",
@@ -38,6 +40,10 @@
 		"panTimeline": "Posunout časovou osu",
 		"zoomTimeline": "Přiblížit časovou osu",
 		"frameBack": "Snímek zpět",
-		"frameForward": "Snímek dopředu"
+		"frameForward": "Snímek dopředu",
+		"editSubtitle": "Upravit vybraný text",
+		"subtitleStartToPlayhead": "Začátek textu na pozici přehrávání",
+		"subtitleEndToPlayhead": "Konec textu na pozici přehrávání",
+		"zoomTimelineKeys": "Časová osa: přiblížit / oddálit / celá"
 	}
 }

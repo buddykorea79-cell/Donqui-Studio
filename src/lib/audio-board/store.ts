@@ -44,7 +44,7 @@ export const useAudioMixStore = create<AudioMixState>((set, get) => ({
 		const spec = mixSpec(document);
 		if (!spec) {
 			toast.error("반영할 오디오가 없습니다.", {
-				description: "음악이나 나레이션을 가져오고, 소리가 나는 레이어를 하나 이상 두세요.",
+				description: "음악이나 나레이션을 가져오고, 소리가 나는 클립을 하나 이상 두세요.",
 			});
 			return false;
 		}
@@ -71,12 +71,12 @@ export const useAudioMixStore = create<AudioMixState>((set, get) => ({
 			);
 			if (!saved) return false;
 			toast.success(`오디오 믹스(${formatSeconds(result.durationSec)})를 Media에 반영했습니다.`, {
-				description: `레이어 ${spec.layers.length}개를 한 오디오로 섞었습니다.`,
+				description: `클립 ${spec.layers.length}개를 한 오디오로 섞었습니다.`,
 			});
 			// Above full scale, the 16-bit file could not hold the peak.
 			if (result.peakDb !== null && result.peakDb > 0.05)
 				toast.warning("믹스가 너무 커서 가장 큰 소리가 잘립니다.", {
-					description: `레이어 볼륨을 약 ${clippingCut(result.peakDb)}% 낮춰 다시 반영하세요.`,
+					description: `클립 볼륨을 약 ${clippingCut(result.peakDb)}% 낮춰 다시 반영하세요.`,
 				});
 			return true;
 		} catch (error) {

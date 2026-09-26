@@ -256,7 +256,8 @@
 		"title": "导出分辨率",
 		"low": "720p",
 		"high": "Source",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "音频轨道",

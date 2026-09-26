@@ -256,7 +256,8 @@
 		"title": "Qualidade de Exportação",
 		"low": "Baixa",
 		"high": "Alta",
-		"medium": "Média"
+		"medium": "Média",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "Faixa de áudio",

@@ -15,9 +15,11 @@ describe("clip effect choices", () => {
 		expect(resolveClipEffect("pan-left", "different-seed")).toBe("pan-left");
 		expect(resolveClipEffect("none", "different-seed")).toBe("none");
 	});
-	it("preserves portrait and landscape ratios within the output ceiling", () => {
-		expect(clipEffectDimensions(3840, 2160)).toEqual({ width: 1920, height: 1080 });
-		expect(clipEffectDimensions(2160, 3840)).toEqual({ width: 1080, height: 1920 });
+	it("preserves portrait and landscape ratios within the 4K ceiling", () => {
+		expect(clipEffectDimensions(1920, 1080)).toEqual({ width: 1920, height: 1080 });
+		expect(clipEffectDimensions(3840, 2160)).toEqual({ width: 3840, height: 2160 });
+		expect(clipEffectDimensions(7680, 4320)).toEqual({ width: 3840, height: 2160 });
+		expect(clipEffectDimensions(4320, 7680)).toEqual({ width: 2160, height: 3840 });
 		expect(clipEffectDimensions(641, 361)).toEqual({ width: 640, height: 360 });
 	});
 	it("can seek backward without history changing any effect", () => {

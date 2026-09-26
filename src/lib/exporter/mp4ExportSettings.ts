@@ -32,6 +32,7 @@ export function wouldUpscale(output: Dims, source: Dims): boolean {
 
 const MEDIUM_SHORT_SIDE = 720;
 const HIGH_SHORT_SIDE = 1080;
+const UHD_SHORT_SIDE = 2160;
 
 function even(value: number) {
 	return Math.floor(value / 2) * 2;
@@ -124,7 +125,8 @@ function calculateBitrate(width: number, height: number, quality: ExportQuality)
 
 	if (totalPixels <= 1280 * 720) return 10_000_000;
 	if (totalPixels <= 1920 * 1080) return 20_000_000;
-	return 30_000_000;
+	if (totalPixels <= 2560 * 1440) return 30_000_000;
+	return 45_000_000;
 }
 
 export function calculateMp4ExportSettings({
@@ -146,8 +148,11 @@ export function calculateMp4ExportSettings({
 		};
 	}
 
-	if (quality === "good") {
-		const dimensions = calculateDimensionsForShortSide(HIGH_SHORT_SIDE, aspectRatioValue);
+	if (quality === "good" || quality === "uhd") {
+		const dimensions = calculateDimensionsForShortSide(
+			quality === "uhd" ? UHD_SHORT_SIDE : HIGH_SHORT_SIDE,
+			aspectRatioValue,
+		);
 		return {
 			...dimensions,
 			bitrate: calculateBitrate(dimensions.width, dimensions.height, quality),

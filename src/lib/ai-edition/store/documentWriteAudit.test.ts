@@ -111,8 +111,12 @@ const WRITER_NAMES = {
 // ---------------------------------------------------------------------------
 
 const DECLARED: WritePath[] = [
-	// Direct subtitle creation is an explicit user edit.
-	w("src/components/ai-edition/NewEditorShell.tsx", "handleAddSubtitle", "save", "gesture"),
+	// A subtitle put in from the quick bar, or one retyped there: Enter on text the user typed.
+	w("src/components/ai-edition/NewEditorShell.tsx", "commitSubtitleDraft", "save", "gesture"),
+	w("src/components/ai-edition/NewEditorShell.tsx", "commitSubtitleDraft", "save", "gesture"),
+	// A new project put in the frame and resolution chosen last in Settings: part of creating
+	// it, not an edit made in it, so `history: false`.
+	w("src/components/ai-edition/NewEditorShell.tsx", "handleCreateProject", "save", "automatic"),
 	// Dropping the legacy auto-caption annotations is a button in the captions pane.
 	w(
 		"src/components/ai-edition/CaptionsPane.tsx",

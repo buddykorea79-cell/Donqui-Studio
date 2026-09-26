@@ -1,11 +1,8 @@
-/* The Audio tab's layer timeline, docked under the page like the editor's own timeline. */
+/* The Audio tab's timeline — tracks of clips — docked under the page like the editor's own. */
 .timeline { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; border-top: 1px solid var(--border); background: var(--surface); color: var(--fg); }
 .toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
 .title { font-weight: 600; color: var(--fg-emphasis, var(--fg)); }
 .hint { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zoom { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-.zoom button { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); color: var(--fg-2); cursor: pointer; }
-.zoom button:disabled { opacity: .45; cursor: default; }
 
 /* Heads and lanes scroll together vertically; only the lanes scroll sideways. */
 .body { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; overflow-y: auto; }
@@ -13,8 +10,10 @@
 .rulerSpacer { height: 24px; border-bottom: 1px solid var(--border); }
 .head { display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--border); color: var(--muted); }
 .head[data-selected="true"] { background: var(--accent-wash); color: var(--fg); }
-.headLabel { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 12px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.headVolume { font-size: 11px; font-variant-numeric: tabular-nums; }
+.headLabel { flex: 1; min-width: 0; display: grid; color: var(--fg); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.headLabel small { color: var(--muted); font-size: 10.5px; }
+.newHead { color: var(--muted); }
+.newHead .headLabel { color: var(--muted); }
 .mute { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); color: var(--fg-2); cursor: pointer; }
 .mute[aria-pressed="true"] { color: var(--danger); border-color: var(--danger); }
 
@@ -22,9 +21,15 @@
 .canvas { position: relative; min-width: 100%; }
 .ruler { position: relative; height: 24px; border-bottom: 1px solid var(--border); background: var(--surface-2); cursor: pointer; user-select: none; }
 .tick { position: absolute; top: 0; bottom: 0; padding: 5px 0 0 4px; border-left: 1px solid var(--border-hi); color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+/* The lanes are the rows' background — drop targets and click-to-deselect; the clips sit in one
+   layer over them, placed by row, so a clip dragged to another row keeps its element. */
+.rows { position: relative; }
 .lane { position: relative; height: 46px; border-bottom: 1px solid var(--border); }
+.lane[data-drop="true"] { background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent); }
+.newLane { display: flex; align-items: center; }
+.newLaneHint { position: sticky; left: 12px; padding: 0 12px; color: var(--muted); font-size: 11px; pointer-events: none; opacity: .7; }
 
-.pill { position: absolute; top: 5px; bottom: 5px; min-width: 6px; box-sizing: border-box; border: 1px solid transparent; border-radius: 6px; overflow: hidden; cursor: grab; touch-action: none; user-select: none; outline: none; }
+.pill { position: absolute; min-width: 6px; box-sizing: border-box; border: 1px solid transparent; border-radius: 6px; overflow: hidden; cursor: grab; touch-action: none; user-select: none; outline: none; }
 .pill[data-kind="music"] { background: color-mix(in srgb, var(--accent) 26%, var(--surface-2)); }
 /* Narration in a warm hue of its own, so it reads apart from the teal music at a glance. */
 .pill[data-kind="voiceover"] { background: color-mix(in srgb, var(--warn) 24%, var(--surface-2)); }

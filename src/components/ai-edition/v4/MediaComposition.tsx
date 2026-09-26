@@ -1,31 +1,36 @@
 import {
-	ArrowDown,
-	ArrowUp,
-	AudioLines,
+	ArrowLeft,
+	ArrowRight,
+	Copy,
 	Film,
 	Image as ImageIcon,
+	Pause,
 	Play,
 	Shuffle,
+	SkipBack,
 	Square,
 	Trash2,
 	WandSparkles,
-	X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { toFileUrl } from "@/components/video-editor/projectPersistence";
-import { collapseTracksToPills } from "@/lib/ai-edition/document/audioTracks";
 import type {
 	AxcutAsset,
 	AxcutDocument,
 	AxcutMediaBoardImage,
 	AxcutMediaBoardItem,
 } from "@/lib/ai-edition/schema";
+import { getOutputSettings, projectOutputFrame } from "@/lib/ai-edition/store/outputSettings";
 import { useProjectStore } from "@/lib/ai-edition/store/projectStore";
 import { formatSec, formatSeconds } from "@/lib/ai-edition/timeline/format";
-import { audioBoardOf, isAudible, mixStatus, playsBoardMix } from "@/lib/audio-board/board";
-import { audioFitSummary } from "@/lib/clip-effects/audioFit";
-import { CLIP_EFFECTS, type ClipEffectSelection } from "@/lib/clip-effects/catalog";
+import { mixStatus } from "@/lib/audio-board/board";
+import {
+	CLIP_EFFECT_FPS,
+	CLIP_EFFECTS,
+	type ClipEffectSelection,
+} from "@/lib/clip-effects/catalog";
+import type { SequencePart } from "@/lib/clip-effects/MediaSequenceComposition";
 import { clipEffectLabel, itemNeedsRender } from "@/lib/media-board/apply";
 import {
 	boardOf,
@@ -39,21 +44,15 @@ import {
 	reshuffleRandomItems,
 	resolvedItemEffect,
 	setAllItemsEffect,
-	setBoardItemRanges,
 	updateBoardItem,
 } from "@/lib/media-board/board";
-import {
-	fitComposition,
-	itemWithDuration,
-	type NarrationSpeech,
-	narrationPauses,
-	narrationSpeech,
-} from "@/lib/media-board/fit";
+import { itemWithDuration } from "@/lib/media-board/fit";
 import { mutateDocument } from "@/lib/media-board/mutate";
+import { useMediaPreview } from "@/lib/media-board/preview";
 import { useComposeStore } from "@/lib/media-board/store";
 import { useThumbnail } from "@/lib/media-board/thumbnails";
-import { useVClipStore, vclipKey } from "@/lib/vclip/store";
-import { ClipPreview } from "./ClipPreview";
+import { compositionSec, duplicateBoardItem, mediaAudioClips } from "@/lib/media-board/timeline";
+import { MediaPreview } from "./MediaPreview";
 import styles from "./MediaStage.module.css";
 
 export function EffectOptions() {
@@ -70,98 +69,122 @@ export function EffectOptions() {
 	);
 }
 
-function edit(change: (document: AxcutDocument) => AxcutDocument) {
-	void mutateDocument(change, { history: true }).catch((error: unknown) => {
+export function edit(change: (document: AxcutDocument) => AxcutDocument) {
+	return mutateDocument(change, { history: true }).catch((error: unknown) => {
 		toast.error("조합을 저장하지 못했습니다.", {
 			description: error instanceof Error ? error.message : String(error),
 		});
+		return false;
 	});
 }
 
-/** A source's length: the project's own record, else what FFmpeg read for V.Clip. */
-function useSourceDurations(): (item: Pick<AxcutMediaBoardItem, "assetId">) => number | undefined {
-	const document = useProjectStore((state) => state.document);
-	const projectId = useProjectStore((state) => state.projectId);
-	const probes = useVClipStore((state) => state.probes);
-	return useMemo(() => {
-		const assets = new Map((document?.assets ?? []).map((asset) => [asset.id, asset]));
-		return (item) => {
-			if (!item.assetId) return undefined;
-			return (
-				assets.get(item.assetId)?.durationSec ||
-				probes[vclipKey(projectId, item.assetId)]?.durationSec ||
-				undefined
-			);
-		};
-	}, [document?.assets, probes, projectId]);
+/** The composition in frames, the way the preview plays it and applying will render it. */
+function sequenceParts(
+	items: AxcutMediaBoardItem[],
+	images: AxcutMediaBoardImage[],
+	assets: AxcutAsset[],
+): SequencePart[] {
+	let from = 0;
+	return items.flatMap((item): SequencePart[] => {
+		const frames = Math.max(1, Math.round(itemDurationSec(item) * CLIP_EFFECT_FPS));
+		const start = from;
+		from += frames;
+		const effect = resolvedItemEffect(item);
+		if (item.kind === "image") {
+			const image = images.find((entry) => entry.id === item.imageId);
+			return image
+				? [
+						{
+							id: item.id,
+							sourceUrl: toFileUrl(image.path),
+							sourceKind: "image",
+							startMs: 0,
+							from: start,
+							frames,
+							effect,
+						},
+					]
+				: [];
+		}
+		const asset = assets.find((entry) => entry.id === item.assetId);
+		return asset
+			? [
+					{
+						id: item.id,
+						sourceUrl: toFileUrl(asset.originalPath),
+						sourceKind: "video",
+						startMs: Math.round(item.startSec * 1000),
+						from: start,
+						frames,
+						effect,
+					},
+				]
+			: [];
+	});
 }
 
 /**
- * Media's composition: the clips, photos and videos that will make up the picture, in order,
- * each with its own Remotion effect and length. It is fitted to the Audio tab's soundtrack —
- * cuts on the narration's pauses when there is one — and rendered onto the timeline in one go.
+ * Media's composition as it plays — in the project's frame, over the soundtrack — with the
+ * selected item's settings, the effects, and applying it all onto Edit's timeline. The items
+ * themselves are laid out on the timeline docked below.
  */
 export function MediaComposition({
+	selectedId,
+	onSelect,
 	defaultEffect,
 	onDefaultEffect,
+	sourceDuration,
 }: {
+	selectedId: string | null;
+	onSelect: (id: string | null) => void;
 	defaultEffect: ClipEffectSelection;
 	onDefaultEffect: (effect: ClipEffectSelection) => void;
+	sourceDuration: (item: Pick<AxcutMediaBoardItem, "assetId">) => number | undefined;
 }) {
 	const document = useProjectStore((state) => state.document);
 	const applying = useComposeStore((state) => state.applying);
-	const [previewId, setPreviewId] = useState<string | null>(null);
 	const [confirmReplace, setConfirmReplace] = useState(false);
-	const [snapToNarration, setSnapToNarration] = useState(true);
-	const sourceDuration = useSourceDurations();
 	const board = boardOf(document);
 	const items = board.items;
-	const totalSec = items.reduce((sum, item) => sum + itemDurationSec(item), 0);
-	const audioSec = document ? audioFitSummary(document).audioMs / 1000 : 0;
-	const speech = useMemo(() => (document ? narrationSpeech(document) : []), [document]);
-	const pauses = useMemo(() => (document ? narrationPauses(document) : []), [document]);
+	const assets = document?.assets ?? [];
+	const totalSec = compositionSec(items);
 	const toRender = items.filter(itemNeedsRender).length;
 	const timelineClips = document?.timeline.clips.length ?? 0;
 	const locked = Boolean(applying);
+	const selected = items.find((item) => item.id === selectedId) ?? null;
+	const status = mixStatus(document);
 
-	// Whole videos and clips need their source length to be stretched; ask FFmpeg for the ones
-	// the project does not know yet.
-	useEffect(() => {
-		for (const asset of document?.assets ?? []) {
-			if (asset.durationSec || !items.some((item) => item.assetId === asset.id)) continue;
-			void useVClipStore.getState().probe(asset);
-		}
-	}, [document?.assets, items]);
-
-	const fitToAudio = () => {
-		if (!document || items.length === 0 || audioSec <= 0) return;
-		const result = fitComposition(items, audioSec, sourceDuration, {
-			pausesSec: snapToNarration ? pauses : [],
-		});
-		edit((current) => setBoardItemRanges(current, result.ranges));
-		if (result.shortSec > 0)
-			toast.warning(`영상이 ${formatSeconds(result.shortSec)} 모자랍니다.`, {
-				description: "모든 항목을 최대로 늘렸습니다. 클립이나 사진을 더 넣으세요.",
-			});
-		else if (result.overSec > 0)
-			toast.warning(`항목이 많아 ${formatSeconds(result.overSec)} 넘칩니다.`, {
-				description: `모든 항목을 ${MIN_ITEM_SEC}초로 줄였습니다. 몇 개를 빼세요.`,
-			});
-		else {
-			const notes = [
-				result.snapped ? "나레이션이 쉬는 곳으로 컷을 옮겼습니다." : "",
-				result.reused
-					? "쓰지 않은 원본이 모자라 일부 클립이 다른 클립과 같은 장면을 다시 씁니다. 클립이나 사진을 더 넣으면 겹치지 않습니다."
-					: "",
-			].filter(Boolean);
-			const message = `조합을 Audio 길이 ${formatSeconds(audioSec)}에 맞췄습니다.`;
-			if (result.reused) toast.warning(message, { description: notes.join(" ") });
-			else toast.success(message, notes.length > 0 ? { description: notes.join(" ") } : undefined);
-		}
-	};
+	const frame = projectOutputFrame(document);
+	const fit = getOutputSettings(document).mediaFit;
+	const parts = useMemo(
+		() => sequenceParts(items, board.images, assets),
+		[items, board.images, assets],
+	);
+	const audioClips = useMemo(() => mediaAudioClips(document), [document]);
+	const audio = useMemo(
+		() =>
+			audioClips.flatMap((clip) => {
+				const asset = assets.find((entry) => entry.id === clip.assetId);
+				return asset
+					? [
+							{
+								id: clip.id,
+								url: toFileUrl(asset.originalPath),
+								from: Math.round(clip.startSec * CLIP_EFFECT_FPS),
+								frames: Math.max(1, Math.round((clip.endSec - clip.startSec) * CLIP_EFFECT_FPS)),
+								startFrom: Math.round(clip.offsetSec * CLIP_EFFECT_FPS),
+							},
+						]
+					: [];
+			}),
+		[audioClips, assets],
+	);
+	const audioEnd = Math.max(0, ...audioClips.map((clip) => clip.endSec));
+	const previewSec = Math.max(totalSec, audioEnd);
 
 	const startApply = (mode: "replace" | "append") => {
 		setConfirmReplace(false);
+		useMediaPreview.getState().controls?.pause();
 		void useComposeStore.getState().apply(mode);
 	};
 
@@ -170,32 +193,72 @@ export function MediaComposition({
 			<div className={styles.sectionHead}>
 				<h2>조합</h2>
 				<span className={styles.hint}>
-					항목 {items.length}개 · {formatSec(totalSec)}
+					항목 {items.length}개 · {formatSec(totalSec)} · {frame.width}×{frame.height}
 				</span>
 				{items.length > 0 ? (
 					<button
 						type="button"
 						className={styles.textButton}
 						disabled={locked}
-						onClick={() => edit(clearBoardItems)}
+						onClick={() => {
+							onSelect(null);
+							void edit(clearBoardItems);
+						}}
 					>
 						모두 비우기
 					</button>
 				) : null}
 			</div>
 
-			<AudioFit
-				document={document}
-				items={items}
-				totalSec={totalSec}
-				audioSec={audioSec}
-				speech={speech}
-				pauseCount={pauses.length}
-				snap={snapToNarration}
-				onSnap={setSnapToNarration}
-				disabled={locked}
-				onFit={fitToAudio}
-			/>
+			{items.length === 0 && audio.length === 0 ? (
+				<div className={styles.empty}>
+					<WandSparkles size={28} />
+					<strong>왼쪽의 클립·사진·영상을 아래 타임라인에 놓으세요</strong>
+					<p className={styles.hint}>
+						Audio 탭에서 ‘Media에 반영’한 오디오가 타임라인 맨 위에 놓이고, 영상과 사진은 그 아래
+						줄에 차례로 이어집니다. 항목마다 Remotion 효과와 길이를 정해 오디오에 맞추세요.
+					</p>
+				</div>
+			) : (
+				<>
+					<MediaPreview
+						parts={parts}
+						audio={audio}
+						durationSec={Math.max(previewSec, 1 / CLIP_EFFECT_FPS)}
+						width={frame.width}
+						height={frame.height}
+						fit={fit}
+					/>
+					<Transport durationSec={previewSec} />
+				</>
+			)}
+
+			{status === "changed" || status === "unapplied" ? (
+				<p className={styles.fitPending} role="status">
+					Audio 탭에서 바꾼 오디오가 아직 반영되지 않았습니다. Audio 탭에서 ‘Media에 반영’을
+					누르세요.
+				</p>
+			) : null}
+
+			{selected ? (
+				<ItemInspector
+					key={selected.id}
+					item={selected}
+					index={items.indexOf(selected)}
+					count={items.length}
+					asset={assets.find((asset) => asset.id === selected.assetId)}
+					image={board.images.find((image) => image.id === selected.imageId)}
+					sourceDurationSec={sourceDuration(selected)}
+					locked={locked}
+					onSelect={onSelect}
+				/>
+			) : items.length > 0 ? (
+				<p className={styles.note}>
+					타임라인에서 항목을 누르면 길이와 효과를 바꿀 수 있습니다. 오른쪽 끝을 끌면 길이가,
+					가운데를 끌면 순서가 바뀝니다. <kbd>Space</kbd> 재생 · <kbd>Delete</kbd> 빼기 ·{" "}
+					<kbd>Ctrl</kbd>+<kbd>D</kbd> 복제
+				</p>
+			) : null}
 
 			<div className={styles.effectBar}>
 				<label className={styles.inline}>
@@ -212,7 +275,7 @@ export function MediaComposition({
 					type="button"
 					className={styles.button}
 					disabled={locked || items.length === 0}
-					onClick={() => edit((current) => setAllItemsEffect(current, defaultEffect))}
+					onClick={() => void edit((current) => setAllItemsEffect(current, defaultEffect))}
 				>
 					모든 항목에 적용
 				</button>
@@ -221,7 +284,7 @@ export function MediaComposition({
 						type="button"
 						className={styles.button}
 						disabled={locked}
-						onClick={() => edit(reshuffleRandomItems)}
+						onClick={() => void edit(reshuffleRandomItems)}
 					>
 						<Shuffle size={14} />
 						랜덤 다시 섞기
@@ -229,38 +292,10 @@ export function MediaComposition({
 				) : null}
 			</div>
 
-			{items.length === 0 ? (
-				<div className={styles.empty}>
-					<WandSparkles size={28} />
-					<strong>왼쪽에서 클립·사진·영상을 조합에 넣으세요</strong>
-					<p className={styles.hint}>
-						넣은 순서대로 타임라인에 놓입니다. 항목마다 Remotion 효과와 길이를 정하고, Audio가
-						있으면 그 길이에 맞출 수 있습니다.
-					</p>
-				</div>
-			) : (
-				<ol className={styles.items}>
-					{items.map((item, index) => (
-						<ItemRow
-							key={item.id}
-							item={item}
-							index={index}
-							count={items.length}
-							asset={document?.assets.find((asset) => asset.id === item.assetId)}
-							image={board.images.find((image) => image.id === item.imageId)}
-							sourceDurationSec={sourceDuration(item)}
-							locked={locked}
-							previewing={previewId === item.id}
-							onPreview={() => setPreviewId(previewId === item.id ? null : item.id)}
-						/>
-					))}
-				</ol>
-			)}
-
 			<div className={styles.applyBar}>
 				<span className={styles.hint}>
 					{toRender > 0
-						? `효과·사진 ${toRender}개는 적용할 때 렌더링합니다. 한 번 만든 결과는 다시 쓰입니다.`
+						? `효과·사진 ${toRender}개는 Edit에 반영할 때 ${frame.width}×${frame.height}로 렌더링합니다. 한 번 만든 결과는 다시 쓰입니다.`
 						: "효과 없는 클립은 원본에서 바로 재생되어 렌더링이 필요 없습니다."}
 				</span>
 				{applying ? (
@@ -282,7 +317,7 @@ export function MediaComposition({
 						<span>
 							{applying.total > 0 && applying.done < applying.total
 								? `렌더링 ${applying.done + 1} / ${applying.total} · ${applying.label}`
-								: "타임라인에 놓는 중…"}
+								: "Edit 타임라인에 놓는 중…"}
 						</span>
 						<button
 							type="button"
@@ -294,10 +329,11 @@ export function MediaComposition({
 						</button>
 					</div>
 				) : confirmReplace ? (
-					<div className={styles.confirm} role="alertdialog" aria-label="타임라인 바꾸기">
+					<div className={styles.confirm} role="alertdialog" aria-label="Edit 타임라인 바꾸기">
 						<p>
-							타임라인의 클립 {timelineClips}개를 이 조합으로 바꿉니다. 그 클립에 붙은 줌·자막 같은
-							편집도 함께 사라집니다. Audio는 그대로이고, 실행 취소로 되돌릴 수 있습니다.
+							Edit 타임라인의 클립 {timelineClips}개를 이 조합으로 바꿉니다. 그 클립에 붙은 줌 같은
+							편집은 함께 사라지고, 자막과 Audio는 같은 시간에 그대로 남습니다. 실행 취소로 되돌릴
+							수 있습니다.
 						</p>
 						<div className={styles.row}>
 							<button
@@ -325,7 +361,7 @@ export function MediaComposition({
 							onClick={() => (timelineClips > 0 ? setConfirmReplace(true) : startApply("replace"))}
 						>
 							<WandSparkles size={15} />
-							타임라인에 적용
+							Edit에 반영
 						</button>
 						<button
 							type="button"
@@ -333,7 +369,7 @@ export function MediaComposition({
 							disabled={items.length === 0 || timelineClips === 0}
 							onClick={() => startApply("append")}
 						>
-							타임라인 끝에 추가
+							Edit 끝에 추가
 						</button>
 					</div>
 				)}
@@ -342,153 +378,39 @@ export function MediaComposition({
 	);
 }
 
-function AudioFit({
-	document,
-	items,
-	totalSec,
-	audioSec,
-	speech,
-	pauseCount,
-	snap,
-	onSnap,
-	disabled,
-	onFit,
-}: {
-	document: AxcutDocument | null;
-	items: AxcutMediaBoardItem[];
-	totalSec: number;
-	audioSec: number;
-	speech: NarrationSpeech[];
-	pauseCount: number;
-	snap: boolean;
-	onSnap: (value: boolean) => void;
-	disabled: boolean;
-	onFit: () => void;
-}) {
-	const tracks = collapseTracksToPills(document?.audioTracks ?? []).filter((track) => !track.muted);
-	const endOf = (kind: "music" | "voiceover") =>
-		Math.max(
-			0,
-			...tracks.filter((track) => track.kind === kind).map((track) => track.endMs / 1000),
-		);
-	// The Audio tab's mix is one track; what it was made of is on the board.
-	const mixed = playsBoardMix(document);
-	const layers = mixed ? audioBoardOf(document).layers.filter(isAudible) : [];
-	const countOf = (kind: "music" | "voiceover") =>
-		layers.filter((layer) => layer.kind === kind).length;
-	const breakdown = mixed
-		? [
-				" · 오디오 믹스",
-				countOf("music") > 0 ? ` · 음악 ${countOf("music")}개` : "",
-				countOf("voiceover") > 0 ? ` · 나레이션 ${countOf("voiceover")}개` : "",
-			].join("")
-		: [
-				endOf("music") > 0 ? ` · 음악 ${formatSeconds(endOf("music"))}` : "",
-				endOf("voiceover") > 0 ? ` · 나레이션 ${formatSeconds(endOf("voiceover"))}` : "",
-			].join("");
-	const narration = mixed ? countOf("voiceover") : endOf("voiceover");
-	const status = mixStatus(document);
-	const pending = status === "unapplied" || status === "changed";
-	const difference = audioSec - totalSec;
-	if (audioSec <= 0)
-		return (
-			<p className={styles.fitNote}>
-				<AudioLines size={14} />
-				{pending
-					? "Audio 탭에서 ‘Media에 반영’을 누르면 조합을 그 오디오 길이에 맞출 수 있습니다."
-					: "Audio 탭에 음악이나 나레이션을 넣으면 조합을 그 길이에 맞출 수 있습니다."}
-			</p>
-		);
-	const span = Math.max(audioSec, totalSec, 0.001);
-	let cursor = 0;
+/** Play, pause and the clock, under the preview; the timeline below scrubs. */
+function Transport({ durationSec }: { durationSec: number }) {
+	const playing = useMediaPreview((state) => state.playing);
+	const time = useMediaPreview((state) => state.timeSec);
 	return (
-		<div className={styles.fit}>
-			<p>
-				<AudioLines size={14} />
-				<span>
-					Audio <strong>{formatSeconds(audioSec)}</strong>
-					{breakdown}
-				</span>
-				<span>
-					조합 <strong>{formatSeconds(totalSec)}</strong>
-				</span>
-				<span data-tone={Math.abs(difference) < 0.05 ? "ok" : "off"}>
-					{Math.abs(difference) < 0.05
-						? "길이가 맞습니다"
-						: difference > 0
-							? `${formatSeconds(difference)} 모자람`
-							: `${formatSeconds(-difference)} 넘침`}
-				</span>
-			</p>
-			{pending ? (
-				<p className={styles.fitPending} role="status">
-					Audio 탭에서 바꾼 오디오가 아직 반영되지 않았습니다. Audio 탭에서 ‘Media에 반영’을
-					누르세요.
-				</p>
-			) : null}
-			<div className={styles.fitBar} aria-hidden>
-				<div className={styles.fitLane}>
-					{items.map((item, index) => {
-						const left = cursor;
-						cursor += itemDurationSec(item);
-						return (
-							<span
-								key={item.id}
-								data-kind={item.kind}
-								data-odd={index % 2 === 1}
-								style={{
-									left: `${(left / span) * 100}%`,
-									width: `${(itemDurationSec(item) / span) * 100}%`,
-								}}
-							/>
-						);
-					})}
-				</div>
-				<div className={styles.fitLane}>
-					<span data-kind="audio" style={{ left: 0, width: `${(audioSec / span) * 100}%` }} />
-					{speech.flatMap(({ spoken }) =>
-						spoken.map((part) => (
-							<span
-								key={`${part.startSec}-${part.endSec}`}
-								data-kind="speech"
-								style={{
-									left: `${(part.startSec / span) * 100}%`,
-									width: `${((part.endSec - part.startSec) / span) * 100}%`,
-								}}
-							/>
-						)),
-					)}
-				</div>
-			</div>
-			<div className={styles.row}>
-				<button
-					type="button"
-					className={`${styles.button} ${styles.primary}`}
-					disabled={disabled || items.length === 0}
-					onClick={onFit}
-				>
-					Audio 길이에 맞추기
-				</button>
-				{pauseCount > 0 ? (
-					<label className={styles.inline}>
-						<input
-							type="checkbox"
-							checked={snap}
-							onChange={(event) => onSnap(event.target.checked)}
-						/>
-						나레이션이 쉬는 곳에 컷 맞추기 ({pauseCount}곳)
-					</label>
-				) : narration > 0 ? (
-					<span className={styles.hint}>
-						나레이션 받아쓰기가 끝나면 말이 쉬는 곳에 컷을 맞출 수 있습니다.
-					</span>
-				) : null}
-			</div>
+		<div className={styles.transport}>
+			<button
+				type="button"
+				className={styles.iconButton}
+				aria-label="처음으로"
+				title="처음으로 (Home)"
+				onClick={() => useMediaPreview.getState().seekTo(0)}
+			>
+				<SkipBack size={15} />
+			</button>
+			<button
+				type="button"
+				className={`${styles.button} ${styles.primary}`}
+				aria-label={playing ? "일시 정지" : "재생"}
+				title="재생 / 일시 정지 (Space)"
+				onClick={() => useMediaPreview.getState().toggle()}
+			>
+				{playing ? <Pause size={15} /> : <Play size={15} />}
+				{playing ? "일시 정지" : "재생"}
+			</button>
+			<span className={styles.clock}>
+				{formatSeconds(Math.min(time, durationSec))} / {formatSeconds(durationSec)}
+			</span>
 		</div>
 	);
 }
 
-function ItemRow({
+function ItemInspector({
 	item,
 	index,
 	count,
@@ -496,8 +418,7 @@ function ItemRow({
 	image,
 	sourceDurationSec,
 	locked,
-	previewing,
-	onPreview,
+	onSelect,
 }: {
 	item: AxcutMediaBoardItem;
 	index: number;
@@ -506,8 +427,7 @@ function ItemRow({
 	image: AxcutMediaBoardImage | undefined;
 	sourceDurationSec: number | undefined;
 	locked: boolean;
-	previewing: boolean;
-	onPreview: () => void;
+	onSelect: (id: string | null) => void;
 }) {
 	const effect = itemEffect(item);
 	const resolved = resolvedItemEffect(item);
@@ -521,7 +441,7 @@ function ItemRow({
 	const kind = item.kind === "image" ? "사진" : item.kind === "clip" ? "클립" : "영상";
 
 	return (
-		<li className={styles.item} data-missing={missing}>
+		<section className={styles.inspector} aria-label="항목 설정">
 			<div className={styles.itemMain}>
 				<span className={styles.index}>{index + 1}</span>
 				<div className={styles.itemThumb}>
@@ -541,128 +461,126 @@ function ItemRow({
 						{kind}
 						{item.kind === "image"
 							? ""
-							: ` · ${formatSec(item.startSec)}–${formatSec(item.endSec)}`}
+							: ` · 원본 ${formatSec(item.startSec)}–${formatSec(item.endSec)}`}
 						{missing ? " · 파일이 프로젝트에 없습니다" : ""}
 					</span>
 				</div>
-				<DurationField
-					label={`${index + 1}번 길이 (초)`}
+			</div>
+			<div className={styles.inspectorFields}>
+				<SecondsField
+					label="길이 (초)"
 					value={durationSec}
+					min={MIN_ITEM_SEC}
 					max={maxSec}
 					disabled={locked}
 					onCommit={(value) =>
-						edit((current) =>
+						void edit((current) =>
 							updateBoardItem(current, item.id, itemWithDuration(item, value, sourceDurationSec)),
 						)
 					}
 				/>
-				<select
-					aria-label={`${index + 1}번 효과`}
-					className={styles.effectSelect}
-					value={effect}
-					disabled={locked}
-					title={effect === "random" ? `랜덤 → ${clipEffectLabel(resolved)}` : undefined}
-					onChange={(event) => {
-						// Read now: the write runs on the queue, after React has put the controlled
-						// select back to the value it still renders.
-						const next = event.target.value as ClipEffectSelection;
-						edit((current) => updateBoardItem(current, item.id, { effect: next }));
-					}}
-				>
-					<EffectOptions />
-				</select>
-				<div className={styles.itemActions}>
-					<button
-						type="button"
-						aria-label={`${index + 1}번 미리보기`}
-						aria-pressed={previewing}
-						disabled={missing}
-						onClick={onPreview}
-					>
-						{previewing ? <X size={14} /> : <Play size={14} />}
-					</button>
-					<button
-						type="button"
-						aria-label={`${index + 1}번 위로`}
-						disabled={locked || index === 0}
-						onClick={() => edit((current) => moveBoardItem(current, item.id, index - 1))}
-					>
-						<ArrowUp size={14} />
-					</button>
-					<button
-						type="button"
-						aria-label={`${index + 1}번 아래로`}
-						disabled={locked || index === count - 1}
-						onClick={() => edit((current) => moveBoardItem(current, item.id, index + 1))}
-					>
-						<ArrowDown size={14} />
-					</button>
-					<button
-						type="button"
-						aria-label={`${index + 1}번 빼기`}
+				{item.kind === "image" ? null : (
+					<SecondsField
+						label="원본 시작 (초)"
+						value={item.startSec}
+						min={0}
+						max={Math.max(0, (sourceDurationSec ?? item.endSec) - durationSec)}
 						disabled={locked}
-						onClick={() => edit((current) => removeBoardItem(current, item.id))}
+						onCommit={(value) =>
+							void edit((current) =>
+								updateBoardItem(current, item.id, {
+									startSec: value,
+									endSec: Math.round((value + durationSec) * 1000) / 1000,
+								}),
+							)
+						}
+					/>
+				)}
+				<label className={styles.inline}>
+					효과
+					<select
+						aria-label="항목 효과"
+						className={styles.effectSelect}
+						value={effect}
+						disabled={locked}
+						title={effect === "random" ? `랜덤 → ${clipEffectLabel(resolved)}` : undefined}
+						onChange={(event) => {
+							// Read now: the write runs on the queue, after React has put the controlled
+							// select back to the value it still renders.
+							const next = event.target.value as ClipEffectSelection;
+							void edit((current) => updateBoardItem(current, item.id, { effect: next }));
+						}}
 					>
-						<Trash2 size={14} />
-					</button>
-				</div>
+						<EffectOptions />
+					</select>
+				</label>
 			</div>
 			{effect === "random" ? (
 				<p className={styles.itemNote}>랜덤 → {clipEffectLabel(resolved)}</p>
 			) : null}
-			{previewing && !missing ? (
-				<div className={styles.itemPreview}>
-					<ItemPreview item={item} asset={asset} image={image} />
-				</div>
-			) : null}
-		</li>
+			<div className={styles.itemActions}>
+				<button
+					type="button"
+					aria-label="앞으로"
+					title="한 칸 앞으로 (Alt + ←)"
+					disabled={locked || index === 0}
+					onClick={() => void edit((current) => moveBoardItem(current, item.id, index - 1))}
+				>
+					<ArrowLeft size={14} />
+				</button>
+				<button
+					type="button"
+					aria-label="뒤로"
+					title="한 칸 뒤로 (Alt + →)"
+					disabled={locked || index === count - 1}
+					onClick={() => void edit((current) => moveBoardItem(current, item.id, index + 1))}
+				>
+					<ArrowRight size={14} />
+				</button>
+				<button
+					type="button"
+					aria-label="복제"
+					title="바로 뒤에 복제 (Ctrl + D)"
+					disabled={locked}
+					onClick={() => {
+						let copy: string | null = null;
+						void edit((current) => {
+							const result = duplicateBoardItem(current, item.id);
+							copy = result.id;
+							return result.document;
+						}).then(() => copy && onSelect(copy));
+					}}
+				>
+					<Copy size={14} />
+				</button>
+				<button
+					type="button"
+					aria-label="빼기"
+					title="조합에서 빼기 (Delete)"
+					disabled={locked}
+					onClick={() => {
+						onSelect(null);
+						void edit((current) => removeBoardItem(current, item.id));
+					}}
+				>
+					<Trash2 size={14} />
+				</button>
+			</div>
+		</section>
 	);
 }
 
-function ItemPreview({
-	item,
-	asset,
-	image,
-}: {
-	item: AxcutMediaBoardItem;
-	asset: AxcutAsset | undefined;
-	image: AxcutMediaBoardImage | undefined;
-}) {
-	const effect = resolvedItemEffect(item);
-	if (item.kind === "image" && image)
-		return (
-			<ClipPreview
-				sourceUrl={toFileUrl(image.path)}
-				sourceKind="image"
-				startMs={0}
-				endMs={Math.round(itemDurationSec(item) * 1000)}
-				effect={effect}
-				width={image.width}
-				height={image.height}
-			/>
-		);
-	if (!asset) return null;
-	return (
-		<ClipPreview
-			sourceUrl={toFileUrl(asset.originalPath)}
-			startMs={Math.round(item.startSec * 1000)}
-			endMs={Math.round(item.endSec * 1000)}
-			effect={effect}
-			width={asset.video?.width || undefined}
-			height={asset.video?.height || undefined}
-		/>
-	);
-}
-
-function DurationField({
+function SecondsField({
 	label,
 	value,
+	min,
 	max,
 	disabled,
 	onCommit,
 }: {
 	label: string;
 	value: number;
+	min: number;
 	max: number;
 	disabled: boolean;
 	onCommit: (value: number) => void;
@@ -672,16 +590,17 @@ function DurationField({
 	useEffect(() => setDraft(String(rounded)), [rounded]);
 	const commit = () => {
 		const parsed = Number(draft);
-		if (Number.isFinite(parsed) && parsed >= MIN_ITEM_SEC && Math.abs(parsed - rounded) > 0.001)
+		if (Number.isFinite(parsed) && parsed >= min && Math.abs(parsed - rounded) > 0.001)
 			onCommit(Math.min(max, parsed));
 		else setDraft(String(rounded));
 	};
 	return (
 		<label className={styles.duration}>
+			{label}
 			<input
 				type="number"
 				aria-label={label}
-				min={MIN_ITEM_SEC}
+				min={min}
 				max={max}
 				step={0.1}
 				value={draft}
@@ -692,7 +611,6 @@ function DurationField({
 					if (event.key === "Enter") commit();
 				}}
 			/>
-			초
 		</label>
 	);
 }

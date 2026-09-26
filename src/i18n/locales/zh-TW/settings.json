@@ -256,7 +256,8 @@
 		"title": "匯出解析度",
 		"low": "720p",
 		"high": "Source",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "音訊軌道",

@@ -27,6 +27,7 @@ import {
 	itemDurationSec,
 	upsertBoardClips,
 } from "@/lib/media-board/board";
+import { useMediaPreview } from "@/lib/media-board/preview";
 import { useComposeStore } from "@/lib/media-board/store";
 import { MediaStage } from "./MediaStage";
 
@@ -35,10 +36,21 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("sonner", () => ({ toast: mocks.toast }));
 vi.mock("@/native/client", () => ({ nativeBridgeClient: { aiEdition: {} } }));
-vi.mock("./ClipPreview", () => ({
-	ClipPreview: (props: { effect: string; sourceKind?: string; startMs: number; endMs: number }) => (
-		<div data-testid="clip-preview">
-			{props.sourceKind ?? "video"}:{props.effect}:{props.startMs}:{props.endMs}
+vi.mock("@/hooks/useAudioPeaks", () => ({ useAudioPeaks: () => null }));
+// The Remotion player needs a real browser; what matters here is what it is asked to play.
+vi.mock("./MediaPreview", () => ({
+	MediaPreview: (props: {
+		parts: Array<{ sourceKind: string; effect: string; startMs: number; frames: number }>;
+		audio: Array<{ url: string }>;
+		width: number;
+		height: number;
+	}) => (
+		<div data-testid="media-preview">
+			{props.width}x{props.height}|
+			{props.parts
+				.map((part) => `${part.sourceKind}:${part.effect}:${part.startMs}:${part.frames}`)
+				.join(",")}
+			|audio:{props.audio.length}
 		</div>
 	),
 }));
@@ -109,6 +121,31 @@ function renderMedia() {
 }
 
 const composition = () => screen.getByRole("region", { name: "조합" });
+const timeline = () => screen.getByRole("region", { name: "Media 타임라인" });
+const blocks = () => within(timeline()).getAllByRole("button", { name: /^\d+번 / });
+
+/** A click on a timeline block: pressed and let go without moving. */
+function clickBlock(name: RegExp) {
+	const block = within(timeline()).getByRole("button", { name });
+	fireEvent.pointerDown(block, { clientX: 10, button: 0 });
+	fireEvent.pointerUp(block, { clientX: 10 });
+	return block;
+}
+
+/** Every element 1000 px wide from 0, so a pixel is `view / 1000` seconds. */
+function measureAs1000px() {
+	vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+		left: 0,
+		top: 0,
+		right: 1000,
+		bottom: 40,
+		width: 1000,
+		height: 40,
+		x: 0,
+		y: 0,
+		toJSON: () => ({}),
+	});
+}
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -116,17 +153,19 @@ beforeEach(() => {
 	localStorage.setItem(LOCALE_STORAGE_KEY, "ko-KR");
 	useProjectStore.setState({ projectId: "p", document: project(), saveDocument: save });
 	useComposeStore.setState({ ...initialCompose, applying: null, apply });
+	useMediaPreview.setState({ timeSec: 0, playing: false, controls: null });
 	Object.defineProperty(window, "electronAPI", { configurable: true, value: api });
 	api.vclipThumbnail.mockResolvedValue({ success: true, dataUrl: "data:image/jpeg;base64,AA==" });
 });
 afterEach(() => {
 	cleanup();
+	vi.restoreAllMocks();
 	useProjectStore.setState(initialProject);
 	useComposeStore.setState(initialCompose);
 });
 
 describe("Media's library", () => {
-	it("opens on V.Clip's clips, in filmed order, and composes them with the chosen effect", async () => {
+	it("opens on V.Clip's clips, in filmed order, and adds them to the timeline with the chosen effect", async () => {
 		renderMedia();
 		expect(screen.getByRole("tab", { name: /V\.Clip 클립 2/ })).toHaveAttribute(
 			"aria-selected",
@@ -137,17 +176,19 @@ describe("Media's library", () => {
 		expect(within(cards[1]).getByText("절벽을 돌아")).toBeInTheDocument();
 
 		fireEvent.change(screen.getByLabelText("새 항목 효과"), { target: { value: "zoom-in" } });
-		fireEvent.click(screen.getByRole("button", { name: /모두 조합에 넣기/ }));
+		fireEvent.click(screen.getByRole("button", { name: /모두 타임라인에 추가/ }));
 		await waitFor(() => expect(board().items).toHaveLength(2));
 		expect(board().items.map((item) => [item.startSec, item.effect])).toEqual([
 			[0, "zoom-in"],
 			[10, "zoom-in"],
 		]);
 		expect(localStorage.getItem("donqui.media.defaultEffect")).toBe("zoom-in");
-		expect(within(composition()).getAllByRole("listitem")).toHaveLength(2);
+		expect(blocks()).toHaveLength(2);
+		// The first one added is selected, and the preview goes to it.
+		expect(screen.getByRole("region", { name: "항목 설정" })).toBeInTheDocument();
 	});
 
-	it("adds photos by their original files, sized, and composes them at the photo length", async () => {
+	it("adds photos by their original files, sized, and places them at the photo length", async () => {
 		api.openImageFilesPicker.mockResolvedValue({
 			success: true,
 			files: [{ path: "C:/photos/sea.jpg", name: "sea.jpg" }],
@@ -164,23 +205,56 @@ describe("Media's library", () => {
 			height: 3000,
 		});
 		fireEvent.change(screen.getByLabelText("사진 길이 (초)"), { target: { value: "3.5" } });
-		fireEvent.click(screen.getByRole("button", { name: "조합에 넣기" }));
+		fireEvent.click(screen.getByRole("button", { name: "타임라인에 추가" }));
 		await waitFor(() => expect(board().items).toHaveLength(1));
 		expect(board().items[0]).toMatchObject({ kind: "image", startSec: 0, endSec: 3.5 });
 	});
 
-	it("hands a video to V.Clip, and puts a whole one in the composition", async () => {
+	it("hands a video to V.Clip, and puts a whole one on the timeline", async () => {
 		renderMedia();
 		fireEvent.click(screen.getByRole("tab", { name: /영상 1/ }));
 		fireEvent.click(screen.getByRole("button", { name: "DJI_0017.MP4 V.Clip에서 나누기" }));
 		expect(onOpenInVClip).toHaveBeenCalledWith("drone");
-		fireEvent.click(screen.getByRole("button", { name: /전체 넣기/ }));
+		fireEvent.click(screen.getByRole("button", { name: /전체 추가/ }));
 		await waitFor(() => expect(board().items).toHaveLength(1));
 		expect(board().items[0]).toMatchObject({ kind: "video", startSec: 0, endSec: 60 });
 	});
+
+	it("drops a card onto the timeline where it was let go", async () => {
+		const document = useProjectStore.getState().document as AxcutDocument;
+		const clips = boardOf(document).clips;
+		useProjectStore.setState({
+			document: addBoardItems(document, [
+				clipItem(clips[1], { effect: "none" }),
+				clipItem(clips[0], { effect: "none" }),
+			]),
+		});
+		renderMedia();
+		measureAs1000px();
+		const lane = within(timeline()).getByLabelText("영상·사진 줄");
+		// jsdom has no DragEvent: a mouse event of the same name carries clientX, and the card's
+		// data is attached the way a browser would.
+		const drag = (type: string, clientX: number) => {
+			const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX });
+			Object.defineProperty(event, "dataTransfer", {
+				value: {
+					types: ["application/x-donqui-media"],
+					getData: () => JSON.stringify({ kind: "clip", id: clips[1].id }),
+					dropEffect: "none",
+				},
+			});
+			return event;
+		};
+		// 9 s of items under 12 s of music, in a 15 s view: 100 px is 1.5 s, in the first item's
+		// first half — the drop goes before it.
+		fireEvent(lane, drag("dragover", 100));
+		fireEvent(lane, drag("drop", 100));
+		await waitFor(() => expect(board().items).toHaveLength(3));
+		expect(board().items.map((item) => item.startSec)).toEqual([0, 0, 10]);
+	});
 });
 
-describe("Media's composition", () => {
+describe("Media's timeline", () => {
 	function composed() {
 		const document = project();
 		const clips = boardOf(document).clips;
@@ -195,38 +269,81 @@ describe("Media's composition", () => {
 		});
 	}
 
-	it("changes an item's length, effect and place", async () => {
+	it("lays the items out under the audio, and changes one's length, effect and place", async () => {
 		composed();
 		renderMedia();
-		const length = screen.getByLabelText("1번 길이 (초)");
+		expect(blocks().map((block) => block.getAttribute("aria-label"))).toEqual([
+			"1번 DJI · 0:00.0–0:04.0",
+			"2번 DJI · 0:10.0–0:15.0",
+		]);
+		clickBlock(/^1번/);
+		const inspector = screen.getByRole("region", { name: "항목 설정" });
+		const length = within(inspector).getByLabelText("길이 (초)");
 		fireEvent.change(length, { target: { value: "6" } });
 		fireEvent.blur(length);
 		await waitFor(() => expect(board().items[0]).toMatchObject({ startSec: 0, endSec: 6 }));
 
-		fireEvent.change(screen.getByLabelText("2번 효과"), { target: { value: "pan-left" } });
-		await waitFor(() => expect(board().items[1].effect).toBe("pan-left"));
+		fireEvent.change(within(inspector).getByLabelText("항목 효과"), {
+			target: { value: "pan-left" },
+		});
+		await waitFor(() => expect(board().items[0].effect).toBe("pan-left"));
 
-		fireEvent.click(screen.getByRole("button", { name: "2번 위로" }));
-		await waitFor(() => expect(board().items[0].startSec).toBe(10));
-		fireEvent.click(screen.getByRole("button", { name: "1번 빼기" }));
+		fireEvent.click(within(inspector).getByRole("button", { name: "뒤로" }));
+		await waitFor(() => expect(board().items[1].startSec).toBe(0));
+		fireEvent.click(within(inspector).getByRole("button", { name: "빼기" }));
 		await waitFor(() => expect(board().items).toHaveLength(1));
 		expect(save.mock.calls.every((call) => call[1].history)).toBe(true);
 	});
 
-	it("previews an item with the effect it will be rendered with", async () => {
+	it("stretches an item by dragging its end, and reorders by dragging it", async () => {
 		composed();
 		renderMedia();
-		fireEvent.click(screen.getByRole("button", { name: "1번 미리보기" }));
-		expect(screen.getByTestId("clip-preview")).toHaveTextContent("video:none:0:4000");
-		fireEvent.click(screen.getByRole("button", { name: "1번 미리보기" }));
-		expect(screen.queryByTestId("clip-preview")).toBeNull();
+		measureAs1000px();
+		// 9 s of items against 12 s of music: a 15 s view, so 100 px is 1.5 s.
+		const first = within(timeline()).getByRole("button", { name: /^1번/ });
+		const end = within(first).getByLabelText("길이 조절");
+		fireEvent.pointerDown(end, { clientX: 285, button: 0 });
+		fireEvent.pointerMove(first, { clientX: 385 });
+		fireEvent.pointerUp(first, { clientX: 385 });
+		await waitFor(() => expect(itemDurationSec(board().items[0])).toBeCloseTo(5.5, 2));
+
+		const second = within(timeline()).getByRole("button", { name: /^2번/ });
+		fireEvent.pointerDown(second, { clientX: 600, button: 0 });
+		fireEvent.pointerMove(second, { clientX: 100 });
+		fireEvent.pointerUp(second, { clientX: 100 });
+		await waitFor(() => expect(board().items[0].startSec).toBe(10));
+	});
+
+	it("selects an item with a click and shows it in the preview", () => {
+		composed();
+		renderMedia();
+		expect(screen.getByTestId("media-preview")).toHaveTextContent(
+			"1920x1080|video:none:0:120,video:tilt:10000:150|audio:0",
+		);
+		clickBlock(/^2번/);
+		expect(within(timeline()).getByRole("button", { name: /^2번/ })).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		expect(useMediaPreview.getState().timeSec).toBeCloseTo(4, 2);
+	});
+
+	it("removes and duplicates the selected item from the keyboard", async () => {
+		composed();
+		renderMedia();
+		clickBlock(/^1번/);
+		fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+		await waitFor(() => expect(board().items).toHaveLength(3));
+		expect(board().items.map((item) => item.startSec)).toEqual([0, 0, 10]);
+		fireEvent.keyDown(window, { key: "Delete" });
+		await waitFor(() => expect(board().items).toHaveLength(2));
 	});
 
 	it("fits the composition to the audio", async () => {
 		composed();
 		renderMedia();
-		expect(within(composition()).getByText("0:03.0 모자람")).toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: "Audio 길이에 맞추기" }));
+		expect(within(timeline()).getByText("0:03.0 모자람")).toBeInTheDocument();
+		fireEvent.click(within(timeline()).getByRole("button", { name: /Audio 길이에 맞추기/ }));
 		await waitFor(() =>
 			expect(board().items.reduce((sum, item) => sum + itemDurationSec(item), 0)).toBeCloseTo(12),
 		);
@@ -238,7 +355,7 @@ describe("Media's composition", () => {
 			"조합을 Audio 길이 0:12.0에 맞췄습니다.",
 			undefined,
 		);
-		expect(await within(composition()).findByText("길이가 맞습니다")).toBeInTheDocument();
+		expect(await within(timeline()).findByText("길이가 맞습니다")).toBeInTheDocument();
 	});
 
 	it("says so when the clips can only cover the audio by showing the same footage", async () => {
@@ -259,7 +376,7 @@ describe("Media's composition", () => {
 			},
 		});
 		renderMedia();
-		fireEvent.click(screen.getByRole("button", { name: "Audio 길이에 맞추기" }));
+		fireEvent.click(within(timeline()).getByRole("button", { name: /Audio 길이에 맞추기/ }));
 		await waitFor(() =>
 			expect(board().items.reduce((sum, item) => sum + itemDurationSec(item), 0)).toBeCloseTo(20),
 		);
@@ -269,7 +386,7 @@ describe("Media's composition", () => {
 		});
 	});
 
-	it("names the Audio tab's mix, and says when its layers changed since", async () => {
+	it("puts the Audio tab's mix on the top row, and says when its clips changed since", async () => {
 		const audio = (id: string, durationSec: number) => ({
 			id,
 			kind: "audio" as const,
@@ -291,9 +408,9 @@ describe("Media's composition", () => {
 		);
 		useProjectStore.setState({ document: applied });
 		renderMedia();
-		expect(
-			within(composition()).getByText(/오디오 믹스 · 음악 1개 · 나레이션 1개/),
-		).toBeInTheDocument();
+		const audioRow = within(timeline()).getByLabelText("Audio 줄");
+		expect(within(audioRow).getByText("오디오 믹스 · 0:12.0")).toBeInTheDocument();
+		expect(within(timeline()).getByText("Media에 반영됨")).toBeInTheDocument();
 		expect(within(composition()).queryByRole("status")).not.toBeInTheDocument();
 		const song = audioBoardOf(applied).layers[0];
 		act(() =>
@@ -302,6 +419,7 @@ describe("Media's composition", () => {
 		expect(await within(composition()).findByRole("status")).toHaveTextContent(
 			"Audio 탭에서 바꾼 오디오가 아직 반영되지 않았습니다.",
 		);
+		expect(within(timeline()).getByText("Audio 탭에 바뀐 내용이 있습니다")).toBeInTheDocument();
 	});
 
 	it("offers cuts on the narration's pauses once it is transcribed", () => {
@@ -327,10 +445,10 @@ describe("Media's composition", () => {
 		expect(screen.getByLabelText(/나레이션이 쉬는 곳에 컷 맞추기 \(3곳\)/)).toBeChecked();
 	});
 
-	it("applies straight onto an empty timeline, and asks before replacing a full one", async () => {
+	it("applies straight onto an empty Edit timeline, and asks before replacing a full one", async () => {
 		composed();
 		const { unmount } = renderMedia();
-		fireEvent.click(screen.getByRole("button", { name: /타임라인에 적용/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Edit에 반영/ }));
 		expect(apply).toHaveBeenCalledWith("replace");
 		unmount();
 
@@ -358,17 +476,17 @@ describe("Media's composition", () => {
 		});
 		apply.mockClear();
 		renderMedia();
-		fireEvent.click(screen.getByRole("button", { name: /타임라인에 적용/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Edit에 반영/ }));
 		expect(apply).not.toHaveBeenCalled();
-		const confirm = screen.getByRole("alertdialog", { name: "타임라인 바꾸기" });
+		const confirm = screen.getByRole("alertdialog", { name: "Edit 타임라인 바꾸기" });
 		expect(within(confirm).getByText(/클립 1개를 이 조합으로 바꿉니다/)).toBeInTheDocument();
 		fireEvent.click(within(confirm).getByRole("button", { name: "바꾸기" }));
 		expect(apply).toHaveBeenCalledWith("replace");
-		fireEvent.click(screen.getByRole("button", { name: "타임라인 끝에 추가" }));
+		fireEvent.click(screen.getByRole("button", { name: "Edit 끝에 추가" }));
 		expect(apply).toHaveBeenLastCalledWith("append");
 	});
 
-	it("shows the renders in progress and stops them on request", () => {
+	it("shows the renders in progress, holds the composition still, and stops on request", () => {
 		composed();
 		const cancel = vi.fn();
 		useComposeStore.setState({
@@ -377,7 +495,9 @@ describe("Media's composition", () => {
 		});
 		renderMedia();
 		expect(screen.getByText("렌더링 2 / 3 · sea.jpg")).toBeInTheDocument();
-		expect(screen.getByLabelText("1번 효과")).toBeDisabled();
+		expect(within(timeline()).getByRole("button", { name: /Audio 길이에 맞추기/ })).toBeDisabled();
+		clickBlock(/^1번/);
+		expect(screen.getByLabelText("항목 효과")).toBeDisabled();
 		fireEvent.click(screen.getByRole("button", { name: /멈추기/ }));
 		expect(cancel).toHaveBeenCalled();
 	});

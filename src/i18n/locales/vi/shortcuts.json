@@ -27,7 +27,9 @@
 		"deleteSelected": "Xóa mục đã chọn",
 		"playPause": "Phát / Tạm dừng",
 		"copySelected": "Sao chép mục đã chọn",
-		"paste": "Dán"
+		"paste": "Dán",
+		"addSubtitle": "Thêm phụ đề",
+		"addTitle": "Thêm tiêu đề"
 	},
 	"fixedActions": {
 		"undo": "Hoàn tác",
@@ -38,6 +40,10 @@
 		"panTimeline": "Xoay Trục thời gian",
 		"zoomTimeline": "Thu phóng Trục thời gian",
 		"frameBack": "Lùi một khung hình",
-		"frameForward": "Tiến một khung hình"
+		"frameForward": "Tiến một khung hình",
+		"editSubtitle": "Sửa chữ đã chọn",
+		"subtitleStartToPlayhead": "Đặt đầu chữ tại vị trí phát",
+		"subtitleEndToPlayhead": "Đặt cuối chữ tại vị trí phát",
+		"zoomTimelineKeys": "Phóng to / thu nhỏ / vừa dòng thời gian"
 	}
 }

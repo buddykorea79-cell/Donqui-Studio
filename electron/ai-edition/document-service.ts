@@ -421,11 +421,19 @@ export class DocumentService {
 						},
 					}
 				: {}),
-			// Audio layers of it go, and a mix of it stops being the applied one.
+			// Audio layers of it go, so does its place in the clip library, and a mix of it stops
+			// being the applied one.
 			...(withoutAssetClips.audioBoard
 				? {
 						audioBoard: {
 							layers: withoutAssetClips.audioBoard.layers.filter((l) => l.assetId !== assetId),
+							...(withoutAssetClips.audioBoard.library
+								? {
+										library: withoutAssetClips.audioBoard.library.filter(
+											(entry) => entry.assetId !== assetId,
+										),
+									}
+								: {}),
 							...(withoutAssetClips.audioBoard.mix?.assetId === assetId
 								? {}
 								: { mix: withoutAssetClips.audioBoard.mix }),

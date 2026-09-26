@@ -256,7 +256,8 @@
 		"title": "دقة التصدير",
 		"low": "720p",
 		"high": "Source",
-		"medium": "1080p"
+		"medium": "1080p",
+		"ultra": "4K"
 	},
 	"audioTrack": {
 		"defaultLabel": "مسار صوتي",

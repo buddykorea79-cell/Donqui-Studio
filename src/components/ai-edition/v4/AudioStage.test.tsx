@@ -87,7 +87,8 @@ const layer = (assetId: string) => {
 	return found;
 };
 
-const renderAudio = () => render(<AudioStage onContinue={vi.fn()} onNewProject={vi.fn()} />);
+const onApplied = vi.fn();
+const renderAudio = () => render(<AudioStage onApplied={onApplied} onNewProject={vi.fn()} />);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -119,16 +120,14 @@ afterEach(() => {
 	Object.defineProperty(window, "electronAPI", { configurable: true, value: originalApi });
 });
 
-describe("Audio's layers", () => {
-	it("lets an empty project continue straight to V.Clip", () => {
-		const onContinue = vi.fn();
-		render(<AudioStage onContinue={onContinue} onNewProject={vi.fn()} />);
+describe("Audio's clips", () => {
+	it("has no way on to V.Clip of its own: the tabs are the way", () => {
+		renderAudio();
 		expect(screen.getByRole("button", { name: "음악 가져오기" })).toBeDisabled();
-		fireEvent.click(screen.getByRole("button", { name: /V\.Clip으로 이동/ }));
-		expect(onContinue).toHaveBeenCalledOnce();
+		expect(screen.queryByRole("button", { name: /V\.Clip으로 이동/ })).not.toBeInTheDocument();
 	});
 
-	it("imports several narrations at once, one after another on rows of their own", async () => {
+	it("imports several narrations at once, back to back on one track", async () => {
 		project();
 		importsAs(intro, outro);
 		api.openAudioFilesPicker.mockResolvedValue({
@@ -143,19 +142,22 @@ describe("Audio's layers", () => {
 		fireEvent.click(screen.getByRole("button", { name: "나레이션 가져오기" }));
 		await waitFor(() =>
 			expect(mocks.toast.success).toHaveBeenCalledWith(
-				"나레이션 2개를 레이어로 넣었습니다.",
+				"나레이션 2개를 클립으로 넣었습니다.",
 				undefined,
 			),
 		);
-		expect(layer("intro")).toMatchObject({ kind: "voiceover", startSec: 0, outSec: 4 });
-		expect(layer("outro")).toMatchObject({ startSec: 4, outSec: 3 });
+		expect(layer("intro")).toMatchObject({ kind: "voiceover", startSec: 0, outSec: 4, row: 0 });
+		expect(layer("outro")).toMatchObject({ startSec: 4, outSec: 3, row: 0 });
 		// Nothing plays yet: the board is applied to Media only on request.
 		expect(useProjectStore.getState().document?.audioTracks).toEqual([]);
-		expect(screen.getByRole("button", { name: "intro.mp3 레이어" })).toHaveAttribute(
+		expect(screen.getByRole("button", { name: "intro.mp3 클립" })).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
-		expect(screen.getByRole("region", { name: "레이어 설정" })).toBeInTheDocument();
+		expect(screen.getByRole("region", { name: "클립 설정" })).toBeInTheDocument();
+		// Both files are in the library, each used once.
+		const library = screen.getByRole("region", { name: "오디오 클립" });
+		expect(within(library).getAllByText(/1번 사용/)).toHaveLength(2);
 		expect(screen.getByText("아직 Media에 반영하지 않았습니다")).toBeInTheDocument();
 	});
 
@@ -192,16 +194,100 @@ describe("Audio's layers", () => {
 		await waitFor(() => expect(save).toHaveBeenCalledOnce());
 		expect(save.mock.calls[0][1]).toEqual({ history: false });
 		expect(layer("song")).toMatchObject({ volume: 50, trackId: document.audioTracks[0].id });
-		expect(await screen.findByRole("button", { name: "song.mp3 레이어" })).toBeInTheDocument();
+		expect(await screen.findByRole("button", { name: "song.mp3 클립" })).toBeInTheDocument();
 	});
 });
 
-describe("a layer's settings", () => {
+describe("the clip library", () => {
+	it("places a file again at the end of its kind's track, as often as asked", async () => {
+		withLayers();
+		renderAudio();
+		const library = screen.getByRole("region", { name: "오디오 클립" });
+		fireEvent.click(within(library).getByRole("button", { name: "intro.mp3 타임라인에 추가" }));
+		await waitFor(() =>
+			expect(
+				audioBoardOf(useProjectStore.getState().document)
+					.layers.filter((entry) => entry.assetId === "intro")
+					.map((entry) => [entry.row, entry.startSec]),
+			).toEqual([
+				[1, 0],
+				[1, 7],
+			]),
+		);
+		expect(within(library).getByText(/2번 사용/)).toBeInTheDocument();
+	});
+
+	it("drops a file onto a track where it was let go", async () => {
+		withLayers();
+		renderAudio();
+		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+			left: 0,
+			top: 0,
+			right: 1000,
+			bottom: 40,
+			width: 1000,
+			height: 40,
+			x: 0,
+			y: 0,
+			toJSON: () => ({}),
+		});
+		const lanes = screen.getByRole("region", { name: "오디오 타임라인" });
+		const newLane = within(lanes).getByText(
+			"여기로 끌어다 놓으면 새 트랙에 놓입니다",
+		).parentElement;
+		if (!newLane) throw new Error("no new-track lane");
+		// jsdom has no DragEvent: a mouse event of the same name carries clientX, and the
+		// data the library card set is attached the way a browser would.
+		const drag = (type: string) => {
+			const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 600 });
+			Object.defineProperty(event, "dataTransfer", {
+				value: {
+					types: ["application/x-donqui-audio-source"],
+					getData: () => "outro",
+					dropEffect: "none",
+				},
+			});
+			return event;
+		};
+		fireEvent(newLane, drag("dragover"));
+		fireEvent(newLane, drag("drop"));
+		// 1000 px for a 15 s view: dropped at 9 s, on a track of its own.
+		await waitFor(() =>
+			expect(
+				audioBoardOf(useProjectStore.getState().document)
+					.layers.filter((entry) => entry.assetId === "outro")
+					.map((entry) => [entry.row, entry.startSec]),
+			).toEqual([
+				[1, 4],
+				[2, 9],
+			]),
+		);
+	});
+
+	it("keeps a file whose last clip was deleted, and forgets it only on asking", async () => {
+		withLayers();
+		renderAudio();
+		fireEvent.click(screen.getByRole("button", { name: "outro.mp3 클립" }));
+		fireEvent.keyDown(window, { key: "Delete" });
+		await waitFor(() => expect(() => layer("outro")).toThrow());
+		const library = screen.getByRole("region", { name: "오디오 클립" });
+		expect(within(library).getByText(/사용 안 함/)).toBeInTheDocument();
+		fireEvent.click(within(library).getByRole("button", { name: "outro.mp3 목록에서 지우기" }));
+		await waitFor(() =>
+			expect(useProjectStore.getState().document?.assets.map((asset) => asset.id)).toEqual([
+				"song",
+				"intro",
+			]),
+		);
+	});
+});
+
+describe("a clip's settings", () => {
 	it("set its volume in percent — typed, preset or dragged — and write it once", async () => {
 		withLayers();
 		renderAudio();
-		fireEvent.click(screen.getByRole("button", { name: "song.mp3 레이어" }));
-		const settings = screen.getByRole("region", { name: "레이어 설정" });
+		fireEvent.click(screen.getByRole("button", { name: "song.mp3 클립" }));
+		const settings = screen.getByRole("region", { name: "클립 설정" });
 		fireEvent.change(within(settings).getByLabelText("볼륨 (%)"), { target: { value: "35" } });
 		fireEvent.blur(within(settings).getByLabelText("볼륨 (%)"));
 		await waitFor(() => expect(layer("song").volume).toBe(35));
@@ -214,7 +300,7 @@ describe("a layer's settings", () => {
 		fireEvent.change(slider, { target: { value: "80" } });
 		fireEvent.change(slider, { target: { value: "70" } });
 		expect(save).not.toHaveBeenCalled();
-		expect(screen.getByText("70%")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "song.mp3 클립" })).toHaveTextContent("70%");
 		fireEvent.pointerUp(slider);
 		await waitFor(() => expect(layer("song").volume).toBe(70));
 		expect(save).toHaveBeenCalledOnce();
@@ -224,8 +310,8 @@ describe("a layer's settings", () => {
 	it("trim, place, fade, mute, change kind and delete", async () => {
 		withLayers();
 		renderAudio();
-		fireEvent.click(screen.getByRole("button", { name: "intro.mp3 레이어" }));
-		const settings = screen.getByRole("region", { name: "레이어 설정" });
+		fireEvent.click(screen.getByRole("button", { name: "song.mp3 클립" }));
+		const settings = screen.getByRole("region", { name: "클립 설정" });
 		const set = async (label: string, value: string) => {
 			fireEvent.change(within(settings).getByLabelText(label), { target: { value } });
 			fireEvent.keyDown(within(settings).getByLabelText(label), { key: "Enter" });
@@ -238,7 +324,7 @@ describe("a layer's settings", () => {
 		await set("원본 끝 (초)", "3.5");
 		await set("페이드 인 (초)", "0.4");
 		await waitFor(() =>
-			expect(layer("intro")).toMatchObject({
+			expect(layer("song")).toMatchObject({
 				startSec: 1.5,
 				inSec: 0.5,
 				outSec: 3.5,
@@ -246,23 +332,69 @@ describe("a layer's settings", () => {
 			}),
 		);
 		fireEvent.click(within(settings).getByRole("checkbox"));
-		await waitFor(() => expect(layer("intro").muted).toBe(true));
-		fireEvent.click(within(settings).getByRole("button", { name: "음악" }));
-		await waitFor(() => expect(layer("intro").kind).toBe("music"));
-		fireEvent.click(within(settings).getByRole("button", { name: /레이어 삭제/ }));
+		await waitFor(() => expect(layer("song").muted).toBe(true));
+		fireEvent.click(within(settings).getByRole("button", { name: "나레이션" }));
+		await waitFor(() => expect(layer("song").kind).toBe("voiceover"));
+		fireEvent.click(within(settings).getByRole("button", { name: /클립 삭제/ }));
 		await waitFor(() =>
 			expect(
 				audioBoardOf(useProjectStore.getState().document).layers.map((entry) => entry.assetId),
-			).toEqual(["song", "outro"]),
+			).toEqual(["intro", "outro"]),
 		);
+		// The file stays, to be placed again.
 		expect(useProjectStore.getState().document?.assets.map((asset) => asset.id)).toEqual([
 			"song",
+			"intro",
 			"outro",
 		]);
 	});
+
+	it("duplicate right after the clip, from the panel or with Ctrl+D", async () => {
+		withLayers();
+		renderAudio();
+		fireEvent.click(screen.getByRole("button", { name: "outro.mp3 클립" }));
+		fireEvent.click(
+			within(screen.getByRole("region", { name: "클립 설정" })).getByRole("button", {
+				name: /복제/,
+			}),
+		);
+		const outros = () =>
+			audioBoardOf(useProjectStore.getState().document)
+				.layers.filter((entry) => entry.assetId === "outro")
+				.map((entry) => entry.startSec);
+		await waitFor(() => expect(outros()).toEqual([4, 7]));
+		fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+		await waitFor(() => expect(outros()).toEqual([4, 7, 10]));
+	});
+
+	it("repeat the music under the whole narration", async () => {
+		const document = withLayers();
+		useProjectStore.setState({
+			document: {
+				...document,
+				audioBoard: {
+					...audioBoardOf(document),
+					layers: audioBoardOf(document).layers.map((entry) =>
+						entry.assetId === "song" ? { ...entry, outSec: 2 } : entry,
+					),
+				},
+			},
+		});
+		renderAudio();
+		fireEvent.click(screen.getByRole("button", { name: "song.mp3 클립" }));
+		fireEvent.click(screen.getByRole("button", { name: /끝까지 반복/ }));
+		await waitFor(() =>
+			expect(
+				audioBoardOf(useProjectStore.getState().document).layers.filter(
+					(entry) => entry.assetId === "song",
+				),
+			).toHaveLength(4),
+		);
+		expect(mocks.toast.success).toHaveBeenCalledWith("클립을 3번 더 이어 붙였습니다.");
+	});
 });
 
-describe("the layer timeline", () => {
+describe("the timeline", () => {
 	beforeEach(() => {
 		vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
 			left: 0,
@@ -277,11 +409,11 @@ describe("the layer timeline", () => {
 		});
 	});
 
-	it("moves a layer by dragging it and writes it once, on release", async () => {
+	it("moves a clip by dragging it and writes it once, on release", async () => {
 		withLayers();
 		renderAudio();
-		// 12 s of layers in a 15 s view, 1000 px wide: 100 px is 1.5 s.
-		const pill = screen.getByRole("button", { name: "outro.mp3 레이어" });
+		// 12 s of clips in a 15 s view, 1000 px wide: 100 px is 1.5 s.
+		const pill = screen.getByRole("button", { name: "outro.mp3 클립" });
 		save.mockClear();
 		fireEvent.pointerDown(pill, { clientX: 300 });
 		fireEvent.pointerMove(pill, { clientX: 350 });
@@ -292,10 +424,20 @@ describe("the layer timeline", () => {
 		expect(save).toHaveBeenCalledOnce();
 	});
 
-	it("trims a layer at either edge, the in-point carrying its start along", async () => {
+	it("drags a clip down onto a track of its own", async () => {
 		withLayers();
 		renderAudio();
-		const pill = screen.getByRole("button", { name: "intro.mp3 레이어" });
+		const pill = screen.getByRole("button", { name: "outro.mp3 클립" });
+		fireEvent.pointerDown(pill, { clientX: 300, clientY: 20 });
+		fireEvent.pointerMove(pill, { clientX: 300, clientY: 120 });
+		fireEvent.pointerUp(pill, { clientX: 300, clientY: 120 });
+		await waitFor(() => expect(layer("outro")).toMatchObject({ row: 2, startSec: 4 }));
+	});
+
+	it("trims a clip at either edge, the in-point carrying its start along", async () => {
+		withLayers();
+		renderAudio();
+		const pill = screen.getByRole("button", { name: "intro.mp3 클립" });
 		const [head, tail] = within(pill).getAllByLabelText(/자르기$/);
 		fireEvent.pointerDown(head, { clientX: 0 });
 		fireEvent.pointerMove(pill, { clientX: 20 });
@@ -307,16 +449,27 @@ describe("the layer timeline", () => {
 		await waitFor(() => expect(layer("intro").outSec).toBe(3.4));
 	});
 
-	it("nudges the selected layer with the arrow keys and mutes from its row", async () => {
+	it("nudges the selected clip with the arrow keys, never into its neighbour", async () => {
 		withLayers();
 		renderAudio();
-		const pill = screen.getByRole("button", { name: "outro.mp3 레이어" });
+		const pill = screen.getByRole("button", { name: "outro.mp3 클립" });
 		fireEvent.keyDown(pill, { key: "ArrowRight" });
 		await waitFor(() => expect(layer("outro").startSec).toBe(4.1));
+		fireEvent.keyDown(pill, { key: "ArrowRight", shiftKey: true });
+		await waitFor(() => expect(layer("outro").startSec).toBe(5.1));
 		fireEvent.keyDown(pill, { key: "ArrowLeft", shiftKey: true });
-		await waitFor(() => expect(layer("outro").startSec).toBe(3.1));
-		fireEvent.click(screen.getByRole("button", { name: "outro.mp3 음소거" }));
-		await waitFor(() => expect(layer("outro").muted).toBe(true));
+		await waitFor(() => expect(layer("outro").startSec).toBe(4.1));
+		// Another second back would run it into the intro, which ends at 4 s: it stops there.
+		fireEvent.keyDown(pill, { key: "ArrowLeft", shiftKey: true });
+		await waitFor(() => expect(layer("outro").startSec).toBe(4));
+	});
+
+	it("mutes a whole track from its head", async () => {
+		withLayers();
+		renderAudio();
+		fireEvent.click(screen.getByRole("button", { name: "트랙 2 음소거" }));
+		await waitFor(() => expect([layer("intro").muted, layer("outro").muted]).toEqual([true, true]));
+		expect(layer("song").muted).toBe(false);
 	});
 
 	it("drags onto the edges of other layers and the start", () => {
@@ -400,9 +553,11 @@ describe("applying to Media", () => {
 		expect(screen.getByRole("button", { name: "Media에 반영" })).toBeDisabled();
 		expect(mocks.toast.success).toHaveBeenCalledWith(
 			"오디오 믹스(0:12.0)를 Media에 반영했습니다.",
-			{ description: "레이어 3개를 한 오디오로 섞었습니다." },
+			{ description: "클립 3개를 한 오디오로 섞었습니다." },
 		);
 		expect(mocks.toast.warning).not.toHaveBeenCalled();
+		// On to Media, where the footage is fitted to it.
+		expect(onApplied).toHaveBeenCalledOnce();
 	});
 
 	it("says how much quieter a clipping mix has to be", async () => {
@@ -420,7 +575,7 @@ describe("applying to Media", () => {
 			expect(mocks.toast.warning).toHaveBeenCalledWith(
 				"믹스가 너무 커서 가장 큰 소리가 잘립니다.",
 				{
-					description: "레이어 볼륨을 약 21% 낮춰 다시 반영하세요.",
+					description: "클립 볼륨을 약 21% 낮춰 다시 반영하세요.",
 				},
 			),
 		);
@@ -438,6 +593,7 @@ describe("applying to Media", () => {
 		);
 		expect(useProjectStore.getState().document).toBe(document);
 		expect(screen.getByRole("button", { name: "Media에 반영" })).toBeEnabled();
+		expect(onApplied).not.toHaveBeenCalled();
 	});
 
 	it("drops a mix that an undo overtook", async () => {
@@ -472,7 +628,7 @@ describe("applying to Media", () => {
 		renderAudio();
 		fireEvent.click(screen.getByRole("button", { name: "Media에 반영" }));
 		await screen.findByText(/Media에 반영됨/);
-		fireEvent.click(screen.getByRole("button", { name: "song.mp3 음소거" }));
+		fireEvent.click(screen.getByRole("button", { name: "트랙 1 음소거" }));
 		expect(await screen.findByText("바뀐 내용이 있습니다 · 다시 반영하세요")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Media에 반영" })).toBeEnabled();
 	});

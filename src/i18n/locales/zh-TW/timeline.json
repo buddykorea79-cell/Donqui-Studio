@@ -104,5 +104,11 @@
 		"recordingUnavailable": "此處無法錄音",
 		"saveFailed": "無法儲存錄音",
 		"importFailed": "無法匯入音訊檔案"
+	},
+	"zoomControls": {
+		"zoomIn": "放大時間軸",
+		"zoomOut": "縮小時間軸",
+		"fit": "顯示整個時間軸",
+		"level": "時間軸縮放"
 	}
 }

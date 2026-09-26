@@ -27,7 +27,9 @@
 		"deleteSelected": "Delete Selected",
 		"playPause": "Play / Pause",
 		"copySelected": "Copy Selected",
-		"paste": "Paste"
+		"paste": "Paste",
+		"addSubtitle": "Add Caption",
+		"addTitle": "Add Title"
 	},
 	"fixedActions": {
 		"undo": "Undo",
@@ -38,6 +40,10 @@
 		"panTimeline": "Pan Timeline",
 		"zoomTimeline": "Zoom Timeline",
 		"frameBack": "Frame Back",
-		"frameForward": "Frame Forward"
+		"frameForward": "Frame Forward",
+		"editSubtitle": "Edit Selected Text",
+		"subtitleStartToPlayhead": "Start Text at Playhead",
+		"subtitleEndToPlayhead": "End Text at Playhead",
+		"zoomTimelineKeys": "Zoom Timeline In / Out / Fit"
 	}
 }
